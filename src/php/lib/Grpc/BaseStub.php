@@ -19,6 +19,66 @@
 
 namespace Grpc;
 
+class InterceptorChannel {
+  private $channel = null;
+  private $next = null;
+  private $UnaryFunction;
+
+  // The end of chain has a real channel in it.
+  public function __construct($channel = null) {
+    if(is_a($channel, 'Grpc\Channel')) {
+      $this->channel = $channel;
+    }
+    $this->UnaryFunction = function($method, &$argument, &$deserialize, &$metadata, &$options) {
+      echo "$this interceptor doesn't have method with UnarUnary\n";
+    };
+  }
+
+  public function setUnaryUnaryIntercept($function){
+    echo "set function\n";
+    $this->UnaryFunction = $function;
+  }
+
+  // The default interceptor_channel handler is to pass to the next interceptor_channel,
+  // in case this interceptor_channel doesn't implement it.
+  public function handleUnaryUnary($method, &$argument, &$deserialize, &$metadata, &$options){
+    $func = $this->UnaryFunction;
+    if($this->next != null) {
+      $func = $this->UnaryFunction;
+      $stopRPC = $func($method, $argument, $deserialize, $metadata, $options);
+      if($stopRPC) {
+        return;
+      } else {
+        return $this->next->handleUnaryUnary($method, $argument, $deserialize, $metadata, $options);
+      }
+    }
+    return $func($method, $argument, $deserialize, $metadata, $options);
+  }
+
+  // If use a variable $tail to InterceptorChannel, then if I need to
+  public function tail(){
+    if($this->next) {
+      return $this->next->tail();
+    }
+    return $this;
+  }
+
+  // TODO: avoid circle
+  private function insert($channel) {
+    $this->next = &$channel;
+  }
+
+  // Insert an interceptor to the tail of the chain.
+  public function insertInterceptorChannel($channel) {
+    $this->tail()->insert($channel);
+  }
+
+  public function getChannel(){
+    return $this->channel;
+  }
+}
+
+
 /**
  * Base class for generated client stubs. Stub methods are expected to call
  * _simpleRequest or _streamRequest and return the result.
@@ -27,7 +87,10 @@ class BaseStub
 {
     private $hostname;
     private $hostname_override;
+    // Stub keeps both Channel and InterceptorChannel. InterceptorChannel is only used to process
+    // interceptor functions before creating the caller.
     private $channel;
+    private $interceptor_channel;
 
     // a callback function
     private $update_metadata;
@@ -71,15 +134,59 @@ class BaseStub
                                  'required. Please see one of the '.
                                  'ChannelCredentials::create methods');
         }
+        // There are 2 kinds of channel the user can pass here: Channel, InterceptorChannel
+        // Steps below makes sure this->interceptor_channel has a real Channel at the tail.
         if ($channel) {
-            if (!is_a($channel, 'Grpc\Channel')) {
-                throw new \Exception('The channel argument is not a'.
-                                     'Channel object');
-            }
+          if (!is_a($channel, 'Grpc\Channel') && !is_a($channel, 'Grpc\InterceptorChannel')) {
+            throw new \Exception('The channel argument is not a' .
+              'Channel object or a InterceptorChannel object');
+          }
+          if (is_a($channel, 'Grpc\Channel')) {
             $this->channel = $channel;
+            $this->interceptor_channel = new InterceptorChannel($this->channel);
+          } else{
+            $this->interceptor_channel = $channel;
+            // If the last Channel in InterceptorChannel is not Channel, add it.
+            if(!is_a($this->interceptor_channel->tail()->getChannel(),'Grpc\Channel')) {
+              $this->channel = new Channel($hostname, $opts);
+              $this->interceptor_channel->insertInterceptorChannel(
+                new InterceptorChannel($this->channel));
+            } else {
+              $this->channel = $this->interceptor_channel->tail()->getChannel();
+            }
+          }
         } else {
-            $this->channel = new Channel($hostname, $opts);
+          $this->channel = new Channel($hostname, $opts);
+          $this->interceptor_channel = new InterceptorChannel($this->channel);
         }
+        // print_r($this->interceptor_channel);
+        // Add defaul method for the last channel
+        $this->addDefaultMethodForLastChannel($this->interceptor_channel->tail());
+    }
+    private function addDefaultMethodForLastChannel(&$channel){
+      $function = function($method,
+                           $argument,
+                           $deserialize,
+                           array $metadata = [],
+                           array $options = [])
+      {
+        $current_channel = $this->channel;
+        $call = new UnaryCall($current_channel,
+          $method,
+          $deserialize,
+          $options);
+        $jwt_aud_uri = $this->_get_jwt_aud_uri($method);
+        if (is_callable($this->update_metadata)) {
+          $metadata = call_user_func($this->update_metadata,
+            $metadata,
+            $jwt_aud_uri);
+        }
+        $metadata = $this->_validate_and_normalize_metadata(
+          $metadata);
+        $call->start($argument, $metadata, $options);
+        return $call;
+      };
+      $channel->setUnaryUnaryIntercept($function);
     }
 
     /**
@@ -220,28 +327,14 @@ class BaseStub
      *
      * @return UnaryCall The active call object
      */
-    protected function _simpleRequest($method,
-                                   $argument,
-                                   $deserialize,
-                                   array $metadata = [],
-                                   array $options = [])
-    {
-        $call = new UnaryCall($this->channel,
-                              $method,
-                              $deserialize,
-                              $options);
-        $jwt_aud_uri = $this->_get_jwt_aud_uri($method);
-        if (is_callable($this->update_metadata)) {
-            $metadata = call_user_func($this->update_metadata,
-                                        $metadata,
-                                        $jwt_aud_uri);
-        }
-        $metadata = $this->_validate_and_normalize_metadata(
-            $metadata);
-        $call->start($argument, $metadata, $options);
-
-        return $call;
-    }
+  protected function _simpleRequest($method,
+                                    $argument,
+                                    $deserialize,
+                                    array $metadata = [],
+                                    array $options = [])
+  {
+    return $this->interceptor_channel->handleUnaryUnary($method, $argument, $deserialize, $metadata, $options);
+  }
 
     /**
      * Call a remote method that takes a stream of arguments and has a single
