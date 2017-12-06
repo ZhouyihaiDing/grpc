@@ -53,17 +53,22 @@ class BenchmarkServer
     @server = GRPC::RpcServer.new(pool_size: 1024, max_waiting_requests: 1024)
     @port = @server.add_http2_port("0.0.0.0:" + port.to_s, cred)
     @server.handle(BenchmarkServiceImpl.new)
-    @start_time = Time.now
+    @timer = GRPC::Core::UsageTimer.new
+
     t = Thread.new {
       @server.run
     }
     t.abort_on_exception
   end
   def mark(reset)
-    s = Grpc::Testing::ServerStats.new(time_elapsed:
-                                       (Time.now-@start_time).to_f)
-    @start_time = Time.now if reset
-    s
+    time_samples = @timer.sample
+
+    @timer.reset if reset
+
+    Grpc::Testing::ServerStats.new(
+      time_elapsed: time_samples['wall_time'],
+      time_user: time_samples['user_time'],
+      time_system: time_samples['system_time'])
   end
   def get_port
     @port

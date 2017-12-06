@@ -36,6 +36,7 @@
 #include "rb_loader.h"
 #include "rb_server.h"
 #include "rb_server_credentials.h"
+#include "rb_usage_timer.h"
 
 static VALUE grpc_rb_cTimeVal = Qnil;
 
@@ -337,4 +338,5 @@ void Init_grpc_c() {
   Init_grpc_status_codes();
   Init_grpc_time_consts();
   Init_grpc_compression_options();
+  Init_grpc_usage_timer();
 }
