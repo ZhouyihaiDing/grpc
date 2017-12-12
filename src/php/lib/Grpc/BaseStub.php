@@ -19,6 +19,77 @@
 
 namespace Grpc;
 
+abstract class Interceptor
+{
+  public function __construct(){}
+}
+
+class ClientInterceptor extends Interceptor
+{
+  public function __construct(){}
+
+  // If user extends ClientInterceptor without override some method, the interceptor will do nothing fot that method.
+  /**
+     * @param object  $request       The protobuf request message
+     * @param array   $call_options  The call's construct options
+     * @param string  $method        The method being called
+     * @param array   $metadata      The call's outbound metadat
+     */
+  public function UnaryCall(&$request, &$call_options, $method, &$metadata){}
+
+  public function ClientStreamingCall($request, &$call_options, $method, &$metadata){}
+
+  public function ServerStreamingCall($request, &$call_options, $method, &$metadata){}
+
+  public function BidiStreamingCall($request, &$call_options, $method, &$metadata) {}
+}
+
+function get_ancestors ($class) {
+  for ($classes[] = $class; $class = get_parent_class ($class); $classes[] = $class);
+  return $classes;
+}
+
+class InterceptorRegistry
+{
+  private $interceptors=array();
+
+  public function __construct($interceptors)
+  {
+    echo "construct InterceptorRegistry\n";
+    foreach ($interceptors as &$interceptor) {
+    if ( get_ancestors($interceptor) === 'Interceptor') {
+      // should be a fatal and exit
+      echo "ERROR: not a class of Interceptor\n";
+    } else { // this else can be removed
+      echo "Appending Interceptor\n";
+      array_push($this->interceptors, $interceptor);
+    }
+  }
+
+  public function handle($type, &$request, &$call, $method, &$metadata){
+    // If interceptors has multiple interceptor, excute in first-come-first-serve order
+    foreach ($interceptors as &$interceptor) {
+    echo "type: $type\n";
+    switch ($type) {
+      case 'UnaryCall':
+        $interceptor->UnaryCall($request, $call, $method, $metadata);
+        break;
+      case 'ClientStreamingCall':
+        $interceptor->ClientStreamingCall($request, $call, $method, $metadata);
+        break;
+      case 'ServerStreamingCall':
+        $interceptor->ServerStreamingCall($request, $call, $method, $metadata);
+        break;
+      case 'BidiStreamingCall':
+        $interceptor->BidiStreamingCall($request, $call, $method, $metadata);
+        break;
+      default:
+        // should be a fatal and exit.
+        echo "ERROR: $type is not a method in a Interceptor\n";
+    }
+  }
+}
+
 /**
  * Base class for generated client stubs. Stub methods are expected to call
  * _simpleRequest or _streamRequest and return the result.
@@ -70,6 +141,10 @@ class BaseStub
             throw new \Exception("The opts['credentials'] key is now ".
                                  'required. Please see one of the '.
                                  'ChannelCredentials::create methods');
+        }
+        if (array_key_exists('interceptors', $opts)) {
+          $this->interceptors = new InterceptorRegistry($opts['interceptors']);
+          unset($opts['interceptors']);
         }
         if ($channel) {
             if (!is_a($channel, 'Grpc\Channel')) {
@@ -226,6 +301,7 @@ class BaseStub
                                    array $metadata = [],
                                    array $options = [])
     {
+        $this->interceptors->handle("UnaryCall", $argument, $options, $method, $metadata);
         $call = new UnaryCall($this->channel,
                               $method,
                               $deserialize,
