@@ -68,6 +68,7 @@ zval *grpc_php_wrap_timeval(gpr_timespec wrapped TSRMLS_DC) {
  * @param long $microseconds The number of microseconds in the interval
  */
 PHP_METHOD(Timeval, __construct) {
+php_printf("Timeval __construct\n");
   wrapped_grpc_timeval *timeval = Z_WRAPPED_GRPC_TIMEVAL_P(getThis());
   php_grpc_long microseconds;
 
@@ -187,6 +188,7 @@ PHP_METHOD(Timeval, similar) {
  * @return Timeval The current time
  */
 PHP_METHOD(Timeval, now) {
+  php_printf("Timeval now\n");
   zval *now = grpc_php_wrap_timeval(gpr_now(GPR_CLOCK_REALTIME) TSRMLS_CC);
   RETURN_DESTROY_ZVAL(now);
 }

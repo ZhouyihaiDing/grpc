@@ -33,6 +33,8 @@
 #include <php_ini.h>
 #include <ext/standard/info.h>
 #include "php_grpc.h"
+//TODO change to something like gpr_getenv
+#define DEBUG_MODE true
 
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
@@ -68,6 +70,18 @@ zend_module_entry grpc_module_entry = {
 #ifdef COMPILE_DL_GRPC
 ZEND_GET_MODULE(grpc)
 #endif
+
+void php_set_allocation_functions(php_allocation_functions functions) {
+  GPR_ASSERT(functions.malloc_fn != NULL);
+  GPR_ASSERT(functions.calloc_fn != NULL);
+  GPR_ASSERT(functions.realloc_fn != NULL);
+  GPR_ASSERT(functions.free_fn != NULL);
+  GRPC_G(g_alloc_functions) = functions;
+}
+  static void* php_malloc(size_t size) { return emalloc(size); }
+  static void* php_calloc(size_t nmemb, size_t size) { return ecalloc(nmemb, size); }
+  static void* php_realloc(void* addr, size_t size) { return erealloc(addr, size); }
+  static void php_free(void* addr) { efree(addr); }
 
 /* {{{ PHP_INI
  */
@@ -220,6 +234,12 @@ PHP_MINIT_FUNCTION(grpc) {
                          GRPC_CHANNEL_SHUTDOWN,
                          CONST_CS | CONST_PERSISTENT);
 
+  if (DEBUG_MODE) {
+    php_printf("DEBUG_MODE\n");
+    GRPC_G(g_alloc_functions) = (php_allocation_functions){7, malloc, calloc, realloc, free};
+  } else {
+    GRPC_G(g_alloc_functions) = (php_allocation_functions){3, php_malloc, php_calloc, php_realloc, php_free};
+  }
   grpc_init_call(TSRMLS_C);
   GRPC_STARTUP(channel);
   grpc_init_server(TSRMLS_C);
@@ -227,6 +247,7 @@ PHP_MINIT_FUNCTION(grpc) {
   grpc_init_channel_credentials(TSRMLS_C);
   grpc_init_call_credentials(TSRMLS_C);
   grpc_init_server_credentials(TSRMLS_C);
+
   return SUCCESS;
 }
 /* }}} */

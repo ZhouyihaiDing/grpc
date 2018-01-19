@@ -47,6 +47,8 @@ zend_class_entry *grpc_ce_call;
 static zend_object_handlers call_ce_handlers;
 #endif
 
+extern zend_grpc_globals grpc_globals;
+
 /* Frees and destroys an instance of wrapped_grpc_call */
 PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_call)
   if (p->owned && p->wrapped != NULL) {
@@ -86,9 +88,9 @@ zval *grpc_parse_metadata_array(grpc_metadata_array
   for (i = 0; i < count; i++) {
     elem = &elements[i];
     key_len = GRPC_SLICE_LENGTH(elem->key);
-    str_key = ecalloc(key_len + 1, sizeof(char));
+    str_key = grpc_globals.g_alloc_functions.calloc_fn(key_len + 1, sizeof(char));
     memcpy(str_key, GRPC_SLICE_START_PTR(elem->key), key_len);
-    str_val = ecalloc(GRPC_SLICE_LENGTH(elem->value) + 1, sizeof(char));
+    str_val = grpc_globals.g_alloc_functions.calloc_fn(GRPC_SLICE_LENGTH(elem->value) + 1, sizeof(char));
     memcpy(str_val, GRPC_SLICE_START_PTR(elem->value),
            GRPC_SLICE_LENGTH(elem->value));
     if (php_grpc_zend_hash_find(array_hash, str_key, key_len, (void **)&data)
@@ -97,8 +99,9 @@ zval *grpc_parse_metadata_array(grpc_metadata_array
         zend_throw_exception(zend_exception_get_default(TSRMLS_C),
                              "Metadata hash somehow contains wrong types.",
                              1 TSRMLS_CC);
-        efree(str_key);
-        efree(str_val);
+        grpc_globals.g_alloc_functions.free_fn(str_key);
+        grpc_globals.g_alloc_functions.free_fn(str_val);
+        PHP_GRPC_FREE_STD_ZVAL(array);
         return NULL;
       }
       php_grpc_add_next_index_stringl(data, str_val,
@@ -112,9 +115,9 @@ zval *grpc_parse_metadata_array(grpc_metadata_array
       add_assoc_zval(array, str_key, inner_array);
       PHP_GRPC_FREE_STD_ZVAL(inner_array);
     }
-    efree(str_key);
+    grpc_globals.g_alloc_functions.free_fn(str_key);
 #if PHP_MAJOR_VERSION >= 7
-    efree(str_val);
+    grpc_globals.g_alloc_functions.free_fn(str_val);
 #endif
   }
   return array;
@@ -174,6 +177,18 @@ bool create_metadata_array(zval *array, grpc_metadata_array *metadata) {
   return true;
 }
 
+void grpc_php_metadata_array_destroy_including_entries(
+    grpc_metadata_array* array) {
+  size_t i;
+  if (array->metadata) {
+    for (i = 0; i < array->count; i++) {
+      grpc_slice_unref(array->metadata[i].key);
+      grpc_slice_unref(array->metadata[i].value);
+    }
+  }
+  grpc_metadata_array_destroy(array);
+}
+
 /* Wraps a grpc_call struct in a PHP object. Owned indicates whether the
    struct should be destroyed at the end of the object's lifecycle */
 zval *grpc_php_wrap_call(grpc_call *wrapped, bool owned TSRMLS_DC) {
@@ -195,6 +210,11 @@ zval *grpc_php_wrap_call(grpc_call *wrapped, bool owned TSRMLS_DC) {
  * @param string $host_override The host is set by user (optional)
  */
 PHP_METHOD(Call, __construct) {
+  if(grpc_globals.initialized == 0){
+    php_printf("grpc_globals->g_alloc_functions is null\n");
+  } else {
+    php_printf("check: %d \n", grpc_globals.g_alloc_functions.check);
+  }
   zval *channel_obj;
   char *method;
   php_grpc_int method_len;
@@ -502,8 +522,8 @@ PHP_METHOD(Call, startBatch) {
   }
 
 cleanup:
-  grpc_metadata_array_destroy(&metadata);
-  grpc_metadata_array_destroy(&trailing_metadata);
+  grpc_php_metadata_array_destroy_including_entries(&metadata);
+  grpc_php_metadata_array_destroy_including_entries(&trailing_metadata);
   grpc_metadata_array_destroy(&recv_metadata);
   grpc_metadata_array_destroy(&recv_trailing_metadata);
   grpc_slice_unref(recv_status_details);

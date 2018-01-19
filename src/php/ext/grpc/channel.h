@@ -40,11 +40,21 @@ typedef struct _grpc_channel_wrapper {
   char *args_hashstr;
   char *creds_hashstr;
   gpr_mu mu;
+  // Is_freed is used to check wrapped_grpc_channel has been freed or not.
+  // If two shared wrapped_grpc_channel point to the same _grpc_channel_wrapper,
+  // for example, ch1->wrapper and ch2->wrapper equals to grpc_channel,
+  // when run ch1->close, we should free (ch1->wrapper), but ch2->wapper won't know
+  // it is freed or not.
+  // The solution is free it when the last wrapper is destruct, which wrapper_count=0,
+  // is_valid is used to tell ch2 that ch1 has already closed it.
+  bool is_valid;
+  size_t wrapper_count;
 } grpc_channel_wrapper;
 
 /* Wrapper struct for grpc_channel that can be associated with a PHP object */
 PHP_GRPC_WRAP_OBJECT_START(wrapped_grpc_channel)
   grpc_channel_wrapper *wrapper;
+  size_t wrapper_count;
 PHP_GRPC_WRAP_OBJECT_END(wrapped_grpc_channel)
 
 #if PHP_MAJOR_VERSION < 7

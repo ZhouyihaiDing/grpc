@@ -34,6 +34,8 @@
 #include <grpc/byte_buffer_reader.h>
 #include <grpc/slice.h>
 
+extern zend_grpc_globals grpc_globals;
+
 grpc_byte_buffer *string_to_byte_buffer(char *string, size_t length) {
   grpc_slice slice = grpc_slice_from_copied_buffer(string, length);
   grpc_byte_buffer *buffer = grpc_raw_byte_buffer_create(&slice, 1);
@@ -53,7 +55,7 @@ void byte_buffer_to_string(grpc_byte_buffer *buffer, char **out_string,
 
   grpc_slice slice = grpc_byte_buffer_reader_readall(&reader);
   size_t length = GRPC_SLICE_LENGTH(slice);
-  char *string = ecalloc(length + 1, sizeof(char));
+  char *string = grpc_globals.g_alloc_functions.calloc_fn(length + 1, sizeof(char));
   memcpy(string, GRPC_SLICE_START_PTR(slice), length);
   grpc_slice_unref(slice);
 

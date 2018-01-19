@@ -53,13 +53,13 @@
     class_object *p = (class_object *)object;
 #define PHP_GRPC_FREE_WRAPPED_FUNC_END() \
     zend_object_std_dtor(&p->std TSRMLS_CC); \
-    efree(p); \
+    free(p); \
   }
 
 #define PHP_GRPC_ALLOC_CLASS_OBJECT(class_object) \
   class_object *intern; \
   zend_object_value retval; \
-  intern = (class_object *)emalloc(sizeof(class_object)); \
+  intern = (class_object *)malloc(sizeof(class_object)); \
   memset(intern, 0, sizeof(class_object));
 
 #define PHP_GRPC_FREE_CLASS_OBJECT(class_object, handler) \
@@ -147,14 +147,14 @@ static inline int php_grpc_zend_hash_find(HashTable *ht, char *key, int len,
 
 #define PHP_GRPC_RETURN_STRING(val, dup) RETURN_STRING(val)
 #define PHP_GRPC_MAKE_STD_ZVAL(pzv) \
-  pzv = (zval *)emalloc(sizeof(zval));
-#define PHP_GRPC_FREE_STD_ZVAL(pzv) efree(pzv);
+  pzv = (zval *)malloc(sizeof(zval));
+#define PHP_GRPC_FREE_STD_ZVAL(pzv) free(pzv);
 #define PHP_GRPC_DELREF(zv)
 
 #define RETURN_DESTROY_ZVAL(val) \
   RETVAL_ZVAL(val, false /* Don't execute copy constructor */, \
               true /* Dealloc original before returning */); \
-  efree(val); \
+  free(val); \
   return
 
 #define PHP_GRPC_WRAP_OBJECT_START(name) \
