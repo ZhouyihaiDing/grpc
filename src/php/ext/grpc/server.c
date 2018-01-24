@@ -109,7 +109,9 @@ PHP_METHOD(Server, requestCall) {
   grpc_call_details details;
   grpc_metadata_array metadata;
   grpc_event event;
-
+  zval zv_call;
+  zval zv_timeval;
+  zval zv_md;
   wrapped_grpc_server *server = Z_WRAPPED_GRPC_SERVER_P(getThis());
   zval *result;
   PHP_GRPC_MAKE_STD_ZVAL(result);
@@ -147,10 +149,10 @@ PHP_METHOD(Server, requestCall) {
   add_property_zval(result, "metadata", grpc_parse_metadata_array(&metadata
                                                                   TSRMLS_CC));
 #else
-  zval zv_call;
-  zval zv_timeval;
-  zval zv_md;
   //TODO(thinkerou): why use zval* to unit test error?
+//  zval zv_call;
+//  zval zv_timeval;
+//  zval zv_md;
   zv_call = *grpc_php_wrap_call(call, true);
   zv_timeval = *grpc_php_wrap_timeval(details.deadline);
   zv_md = *grpc_parse_metadata_array(&metadata);
@@ -158,12 +160,25 @@ PHP_METHOD(Server, requestCall) {
   add_property_zval(result, "call", &zv_call);
   add_property_zval(result, "absolute_deadline", &zv_timeval);
   add_property_zval(result, "metadata", &zv_md);
+  zval_ptr_dtor(&zv_call);
+  zval_ptr_dtor(&zv_timeval);
+  zval_ptr_dtor(&zv_md);
+  zval *f = &zv_call;
+  efree(f);
+
 #endif
 
  cleanup:
   grpc_call_details_destroy(&details);
   grpc_metadata_array_destroy(&metadata);
   RETURN_DESTROY_ZVAL(result);
+
+  RETVAL_ZVAL(result, false, true);
+//  efree(&zv_call);
+//  efree(&zv_timeval);
+//  efree(&zv_md);
+//  efree(result);
+
 }
 
 /**

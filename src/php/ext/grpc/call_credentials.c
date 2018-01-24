@@ -35,6 +35,7 @@
 
 #include <grpc/grpc.h>
 #include <grpc/grpc_security.h>
+#include <grpc/support/alloc.h>
 #include <grpc/support/string_util.h>
 
 zend_class_entry *grpc_ce_call_credentials;
@@ -44,8 +45,11 @@ static zend_object_handlers call_credentials_ce_handlers;
 
 /* Frees and destroys an instance of wrapped_grpc_call_credentials */
 PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_call_credentials)
+  //php_printf("PHP_GRPC_FREE_WRAPPED_FUNC_START CALLLL e\n");
   if (p->wrapped != NULL) {
+    //php_printf("realse\n");
     grpc_call_credentials_release(p->wrapped);
+    p->wrapped = NULL;
   }
 PHP_GRPC_FREE_WRAPPED_FUNC_END()
 
@@ -78,6 +82,7 @@ zval *grpc_php_wrap_call_credentials(grpc_call_credentials
  * @return CallCredentials The new composite credentials object
  */
 PHP_METHOD(CallCredentials, createComposite) {
+  //php_printf("createComposite\n");
   zval *cred1_obj;
   zval *cred2_obj;
 
@@ -94,6 +99,7 @@ PHP_METHOD(CallCredentials, createComposite) {
     Z_WRAPPED_GRPC_CALL_CREDS_P(cred1_obj);
   wrapped_grpc_call_credentials *cred2 =
     Z_WRAPPED_GRPC_CALL_CREDS_P(cred2_obj);
+    php_printf("xxxxxx\n");
   grpc_call_credentials *creds =
       grpc_composite_call_credentials_create(cred1->wrapped, cred2->wrapped,
                                              NULL);
@@ -107,6 +113,7 @@ PHP_METHOD(CallCredentials, createComposite) {
  * @return CallCredentials The new call credentials object
  */
 PHP_METHOD(CallCredentials, createFromPlugin) {
+  //php_printf("createFromPlugin\n");
   zend_fcall_info *fci;
   zend_fcall_info_cache *fci_cache;
 
@@ -120,6 +127,9 @@ PHP_METHOD(CallCredentials, createFromPlugin) {
                             fci->params, fci->param_count) == FAILURE) {
     zend_throw_exception(spl_ce_InvalidArgumentException,
                          "createFromPlugin expects 1 callback", 1 TSRMLS_CC);
+    free(fci);
+    free(fci_cache);
+    php_printf("error's here\n");
     return;
   }
 
@@ -183,17 +193,29 @@ int plugin_get_metadata(
   *status = GRPC_STATUS_OK;
   *error_details = NULL;
 
-  grpc_metadata_array metadata;
-
+  // Have to do it this way because create_metadata_array() can have multiple
+  // situations: metadata=NULL, metadata->metadata=NULL and metadata->metadata != NULL.
+  // We need to use point as information to free them at each stage.
+  grpc_metadata_array *metadata;
+  metadata = emalloc(sizeof(grpc_metadata_array));
+  bool should_return = false;
+php_printf("1\n");
   if (retval == NULL || Z_TYPE_P(retval) != IS_ARRAY) {
     *status = GRPC_STATUS_INVALID_ARGUMENT;
-    return true;  // Synchronous return.
+    should_return = true;  // Synchronous return.
   }
-  if (!create_metadata_array(retval, &metadata)) {
+  if (!create_metadata_array(retval, metadata)) {
+    if(metadata == NULL){
+      php_printf("right\n");
+    }
+    if(metadata != NULL){
+      grpc_php_metadata_array_destroy_including_entries(metadata);
+      efree(metadata);
+    }
     *status = GRPC_STATUS_INVALID_ARGUMENT;
-    return true;  // Synchronous return.
+    should_return = true;  // Synchronous return.
   }
-
+php_printf("2\n");
   if (retval != NULL) {
 #if PHP_MAJOR_VERSION < 7
     zval_ptr_dtor(&retval);
@@ -204,32 +226,39 @@ int plugin_get_metadata(
     PHP_GRPC_FREE_STD_ZVAL(retval);
 #endif
   }
+  php_printf("return\n");
+  if (should_return) {
+    return true;
+  }
 
-  if (metadata.count > GRPC_METADATA_CREDENTIALS_PLUGIN_SYNC_MAX) {
+  if (metadata->count > GRPC_METADATA_CREDENTIALS_PLUGIN_SYNC_MAX) {
     *status = GRPC_STATUS_INTERNAL;
     *error_details = gpr_strdup(
         "PHP plugin credentials returned too many metadata entries");
-    for (size_t i = 0; i < metadata.count; i++) {
+    for (size_t i = 0; i < metadata->count; i++) {
       // TODO(stanleycheung): Why don't we need to unref the key here?
-      grpc_slice_unref(metadata.metadata[i].value);
+      grpc_slice_unref(metadata->metadata[i].value);
     }
   } else {
     // Return data to core.
-    *num_creds_md = metadata.count;
-    for (size_t i = 0; i < metadata.count; ++i) {
-      creds_md[i] = metadata.metadata[i];
+    *num_creds_md = metadata->count;
+    for (size_t i = 0; i < metadata->count; ++i) {
+      creds_md[i] = metadata->metadata[i];
     }
   }
 
-  grpc_metadata_array_destroy(&metadata);
+  grpc_metadata_array_destroy(metadata);
+  efree(metadata);
   return true;  // Synchronous return.
 }
 
 /* Cleanup function for plugin creds API */
 void plugin_destroy_state(void *ptr) {
+php_printf("plugin_destroy_state\n");
   plugin_state *state = (plugin_state *)ptr;
   free(state->fci);
   free(state->fci_cache);
+  php_printf("freed\n");
 #if PHP_MAJOR_VERSION < 7
   PHP_GRPC_FREE_STD_ZVAL(state->fci->params);
   PHP_GRPC_FREE_STD_ZVAL(state->fci->retval);

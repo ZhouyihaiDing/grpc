@@ -99,6 +99,7 @@ zval *grpc_parse_metadata_array(grpc_metadata_array
                              1 TSRMLS_CC);
         efree(str_key);
         efree(str_val);
+        PHP_GRPC_FREE_STD_ZVAL(array);
         return NULL;
       }
       php_grpc_add_next_index_stringl(data, str_val,
@@ -123,24 +124,35 @@ zval *grpc_parse_metadata_array(grpc_metadata_array
 /* Populates a grpc_metadata_array with the data in a PHP array object.
    Returns true on success and false on failure */
 bool create_metadata_array(zval *array, grpc_metadata_array *metadata) {
+  php_printf("create_metadata_array start\n");
   HashTable *array_hash;
   HashTable *inner_array_hash;
   zval *value;
   zval *inner_array;
+    grpc_metadata_array_init(metadata);
+    metadata->count = 0;
+    metadata->metadata = NULL;
   if (Z_TYPE_P(array) != IS_ARRAY) {
+    php_printf("false a\n");
     return false;
   }
-  grpc_metadata_array_init(metadata);
+  php_printf("continue a \n");
+//  grpc_metadata_array_init(metadata);
+//  metadata->count = 0;
+//  metadata->metadata = NULL;
   array_hash = Z_ARRVAL_P(array);
 
   char *key;
   int key_type;
+  php_printf("continue c \n");
   PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(array_hash, key, key_type,
                                           inner_array)
     if (key_type != HASH_KEY_IS_STRING || key == NULL) {
+      php_printf("false b\n");
       return false;
     }
     if (Z_TYPE_P(inner_array) != IS_ARRAY) {
+      php_printf("false c\n");
       return false;
     }
     inner_array_hash = Z_ARRVAL_P(inner_array);
@@ -149,19 +161,23 @@ bool create_metadata_array(zval *array, grpc_metadata_array *metadata) {
 
   metadata->metadata = gpr_malloc(metadata->capacity * sizeof(grpc_metadata));
 
+  php_printf("continue b \n");
   char *key1 = NULL;
   int key_type1;
   PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(array_hash, key1, key_type1,
                                           inner_array)
     if (key_type1 != HASH_KEY_IS_STRING) {
+      php_printf("false 1\n");
       return false;
     }
     if (!grpc_header_key_is_legal(grpc_slice_from_static_string(key1))) {
+      php_printf("false 2\n");
       return false;
     }
     inner_array_hash = Z_ARRVAL_P(inner_array);
     PHP_GRPC_HASH_FOREACH_VAL_START(inner_array_hash, value)
       if (Z_TYPE_P(value) != IS_STRING) {
+        php_printf("false 3\n");
         return false;
       }
       metadata->metadata[metadata->count].key =
@@ -169,9 +185,35 @@ bool create_metadata_array(zval *array, grpc_metadata_array *metadata) {
       metadata->metadata[metadata->count].value =
         grpc_slice_from_copied_buffer(Z_STRVAL_P(value), Z_STRLEN_P(value));
       metadata->count += 1;
+      php_printf("a count %d \n", metadata->count);
     PHP_GRPC_HASH_FOREACH_END()
   PHP_GRPC_HASH_FOREACH_END()
+  php_printf("create_metadata_array end\n");
   return true;
+}
+
+void grpc_php_metadata_array_destroy_including_entries(
+    grpc_metadata_array* array) {
+  //php_printf("count %d \n", array->count);
+  if(array == NULL){
+    return;
+  }
+  if (array->metadata == NULL) {
+    grpc_metadata_array_destroy(array);
+    return;
+  }
+  size_t i;
+  if (array->metadata) {
+    //php_printf("xxxxxx\n");
+    for (i = 0; i < array->count; i++) {
+      //php_printf("count i %d \n", i);
+      grpc_slice_unref(array->metadata[i].key);
+      grpc_slice_unref(array->metadata[i].value);
+    }
+  }
+  //php_printf("yyyyyyyyyyyyyyyyyyx\n");
+  grpc_metadata_array_destroy(array);
+  //php_printf("zzzzzzzzzzzzzzzzzzzzzzzzx\n");
 }
 
 /* Wraps a grpc_call struct in a PHP object. Owned indicates whether the
@@ -502,8 +544,8 @@ PHP_METHOD(Call, startBatch) {
   }
 
 cleanup:
-  grpc_metadata_array_destroy(&metadata);
-  grpc_metadata_array_destroy(&trailing_metadata);
+  grpc_php_metadata_array_destroy_including_entries(&metadata);
+  grpc_php_metadata_array_destroy_including_entries(&trailing_metadata);
   grpc_metadata_array_destroy(&recv_metadata);
   grpc_metadata_array_destroy(&recv_trailing_metadata);
   grpc_slice_unref(recv_status_details);
@@ -526,7 +568,9 @@ cleanup:
  */
 PHP_METHOD(Call, getPeer) {
   wrapped_grpc_call *call = Z_WRAPPED_GRPC_CALL_P(getThis());
-  PHP_GRPC_RETURN_STRING(grpc_call_get_peer(call->wrapped), 1);
+  char *peer = grpc_call_get_peer(call->wrapped);
+  PHP_GRPC_RETVAL_STRING(peer, 1);
+  gpr_free(peer);
 }
 
 /**
