@@ -91,6 +91,10 @@ PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
 //      is_last_wrapper = true;
 //    }
     gpr_mu_unlock(&p->wrapper->mu);
+    // The only condition to delete a persistent channel is (timeout && le->ref_count == 0),
+    // and it's checked during creating a new channel.
+    // Destruct a channel only minus the le->ref_count by 1.
+    // Or later change it to use a thread keep looping check the timeout with a timer.
     if (is_last_wrapper) {
       if (in_persistent_list) {
         // If ref_count==0 and the key still in the list, it means the user
@@ -247,7 +251,11 @@ void create_and_add_channel_to_persistent_list(
   channel_persistent_le_t *le;
   // this links each persistent list entry to a destructor
   new_rsrc.type = le_plink;
-  le = malloc(sizeof(channel_persistent_le_t));
+  if(grpc_time_channel_key_map_capacity_remain(channel_register) > 0) {
+    le = grpc_time_channel_key_map_get_free();
+  } else {
+    le = malloc(sizeof(channel_persistent_le_t));
+  }
 
   create_channel(channel, target, args, creds);
 

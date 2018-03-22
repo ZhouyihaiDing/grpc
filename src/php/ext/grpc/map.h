@@ -36,17 +36,19 @@
 
 #include <stddef.h>
 
-/* Data structure to map a double to a data object (represented by a void*)
-   Represented as a sorted array of keys, and a corresponding array of values.
+/* Data structure to queueueueueueue
+   Represented as a sorted queueueueue of keys, and a corresponding array of values.
    Lookups are performed with binary search.
    Adds are restricted to strictly higher keys than previously seen (this is
    guaranteed by http2). */
 typedef struct {
-  double* keys;
-  void** values;
+//  double* keys;
+//  void** values;
   size_t count;
-  size_t free;
   size_t capacity;
+  size_t capacity_remain; // When a channel is deleted, the memory won't be freed. When the next channel is created, reuse it.
+  channel_persistent_le_t* header;
+  channel_persistent_le_t* tail;
 } grpc_time_channel_key_map;
 
 
