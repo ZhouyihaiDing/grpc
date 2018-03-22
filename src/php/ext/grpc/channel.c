@@ -38,6 +38,7 @@
 #include <zend_exceptions.h>
 
 #include <stdbool.h>
+//#include <queue.h>
 
 #include <grpc/grpc.h>
 #include <grpc/grpc_security.h>
@@ -54,6 +55,8 @@ static zend_object_handlers channel_ce_handlers;
 #endif
 static gpr_mu global_persistent_list_mu;
 int le_plink;
+
+extern php_grpc_time_key_map channel_register;
 
 /* Frees and destroys an instance of wrapped_grpc_channel */
 PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
@@ -83,10 +86,10 @@ PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
         gpr_mu_unlock(&global_persistent_list_mu);
       }
     }
-    p->wrapper->ref_count -= 1;
-    if (p->wrapper->ref_count == 0) {
-      is_last_wrapper = true;
-    }
+//    p->wrapper->ref_count -= 1;
+//    if (p->wrapper->ref_count == 0) {
+//      is_last_wrapper = true;
+//    }
     gpr_mu_unlock(&p->wrapper->mu);
     if (is_last_wrapper) {
       if (in_persistent_list) {
@@ -181,6 +184,43 @@ void generate_sha1_str(char *sha1str, char *str, php_grpc_int len) {
   make_sha1_digest(sha1str, digest);
 }
 
+void update_time_key_persistent_list(double time_pre, char* key) {
+  gpr_timespec tv = gpr_now(GPR_CLOCK_REALTIME);
+  double time_cur = gpr_timespec_to_micros(tv);
+  *le->time = time_cur;
+  grpc_time_key_map_update(time_pre, time_cur, key);
+}
+
+void append_and_add_to_time_key_persistent_list(double time_cur, char* key) {
+  if (channel_register.count > persisten_channel_upper_bound) {
+    // delete the top and then insert
+    double time_top = grpc_time_key_map_get_top();
+    if (is_channel_expire(time_top, time, timeout)) {
+      delete_timeout_from_time_key_persistent_list(time_cur, timeout);
+    } else {
+      grpc_time_key_map_delete(&channel_register, time_top);
+    }
+  }
+  grpc_time_key_map_add(&channel_register, time_cur, (void*)key);
+}
+
+bool is_channel_expire(double time_pre, double time_cur, double timeout){
+  if(time_cur - time_pre > timeout){
+    return true;
+  }
+  return false;
+}
+
+void delete_timeout_from_time_key_persistent_list(double time_cur, double timeout) {
+  while(grpc_time_key_map_size(&channel_register) > 0) {
+    double time_top = grpc_time_key_map_get_top();
+    if (!is_channel_expire(time_top, time, timeout)) {
+      break;
+    }
+    grpc_time_key_map_delete(&channel_register, time_top);
+  }
+}
+
 void create_channel(
     wrapped_grpc_channel *channel,
     char *target,
@@ -212,6 +252,10 @@ void create_and_add_channel_to_persistent_list(
   create_channel(channel, target, args, creds);
 
   le->channel = channel->wrapper;
+  le->time = (double *)pemalloc(sizeof(double), 1);
+  gpr_timespec tv = gpr_now(GPR_CLOCK_REALTIME);
+  *le->time = gpr_timespec_to_micros(tv);
+  append_and_add_to_time_key_persistent_list(*le->time, key);
   new_rsrc.ptr = le;
   gpr_mu_lock(&global_persistent_list_mu);
   PHP_GRPC_PERSISTENT_LIST_UPDATE(&EG(persistent_list), key, key_len,
@@ -363,6 +407,8 @@ PHP_METHOD(Channel, __construct) {
       free(channel->wrapper);
       channel->wrapper = le->channel;
       channel->wrapper->ref_count += 1;
+      le->ref_count += 1;
+      update_time_key_persistent_list(le->time, timeout);
     }
   }
 }

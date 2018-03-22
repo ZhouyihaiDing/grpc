@@ -37,6 +37,8 @@
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
 
+php_grpc_time_key_map channel_register;
+
 /* {{{ grpc_functions[]
  *
  * Every user visible function must have an entry in grpc_functions[].
@@ -99,6 +101,7 @@ PHP_MINIT_FUNCTION(grpc) {
   /* If you have INI entries, uncomment these lines
      REGISTER_INI_ENTRIES();
   */
+  grpc_time_key_map_init(&channel_register, 20);
   /* Register call error constants */
   REGISTER_LONG_CONSTANT("Grpc\\CALL_OK", GRPC_CALL_OK,
                          CONST_CS | CONST_PERSISTENT);
