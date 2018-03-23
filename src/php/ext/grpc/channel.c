@@ -46,6 +46,7 @@
 
 #include "completion_queue.h"
 #include "channel_credentials.h"
+#include "map.h"
 #include "server.h"
 #include "timeval.h"
 
@@ -188,27 +189,14 @@ void generate_sha1_str(char *sha1str, char *str, php_grpc_int len) {
   make_sha1_digest(sha1str, digest);
 }
 
-void update_time_key_persistent_list(double time_pre, char* key) {
+void update_time_key_persistent_list(channel_persistent_le_t* le) {
   gpr_timespec tv = gpr_now(GPR_CLOCK_REALTIME);
   double time_cur = gpr_timespec_to_micros(tv);
   *le->time = time_cur;
-  grpc_time_key_map_update(time_pre, time_cur, key);
+  grpc_time_key_map_update(&channel_register, le);
 }
 
-void append_and_add_to_time_key_persistent_list(double time_cur, char* key) {
-  if (channel_register.count > persisten_channel_upper_bound) {
-    // delete the top and then insert
-    double time_top = grpc_time_key_map_get_top();
-    if (is_channel_expire(time_top, time, timeout)) {
-      delete_timeout_from_time_key_persistent_list(time_cur, timeout);
-    } else {
-      grpc_time_key_map_delete(&channel_register, time_top);
-    }
-  }
-  grpc_time_key_map_add(&channel_register, time_cur, (void*)key);
-}
-
-bool is_channel_expire(double time_pre, double time_cur, double timeout){
+bool grpc_is_channel_expire(double time_pre, double time_cur, double timeout){
   if(time_cur - time_pre > timeout){
     return true;
   }
@@ -216,14 +204,32 @@ bool is_channel_expire(double time_pre, double time_cur, double timeout){
 }
 
 void delete_timeout_from_time_key_persistent_list(double time_cur, double timeout) {
-  while(grpc_time_key_map_size(&channel_register) > 0) {
-    double time_top = grpc_time_key_map_get_top();
-    if (!is_channel_expire(time_top, time, timeout)) {
+  while(php_grpc_time_key_map_size(&channel_register) > 0) {
+    channel_persistent_le_t* le = (channel_persistent_le_t*)grpc_time_key_map_get_top(&channel_register);
+    double time_top = *le->time;
+    if (!grpc_is_channel_expire(time_top, time_cur, timeout)) {
       break;
     }
-    grpc_time_key_map_delete(&channel_register, time_top);
+    php_grpc_time_key_map_delete(&channel_register, le);
   }
 }
+
+void append_and_add_to_time_key_persistent_list(double time_cur, channel_persistent_le_t* key) {
+  size_t persisten_channel_upper_bound = 20;
+  double timeout = 500 * 1000;
+  if (channel_register.count > persisten_channel_upper_bound) {
+    // delete the top and then insert
+    channel_persistent_le_t* le = (channel_persistent_le_t*)grpc_time_key_map_get_top(&channel_register);
+    double time_top = *le->time;
+    if (grpc_is_channel_expire(time_top, time_cur, timeout)) {
+      delete_timeout_from_time_key_persistent_list(time_cur, timeout);
+    } else {
+      php_grpc_time_key_map_delete(&channel_register, le);
+    }
+  }
+  php_grpc_time_key_map_add(&channel_register, (void*)key);
+}
+
 
 void create_channel(
     wrapped_grpc_channel *channel,
@@ -251,8 +257,8 @@ void create_and_add_channel_to_persistent_list(
   channel_persistent_le_t *le;
   // this links each persistent list entry to a destructor
   new_rsrc.type = le_plink;
-  if(grpc_time_channel_key_map_capacity_remain(channel_register) > 0) {
-    le = grpc_time_channel_key_map_get_free();
+  if(php_grpc_time_key_map_capacity_remain(&channel_register) > 0) {
+    le = grpc_time_key_map_get_top(&channel_register);
   } else {
     le = malloc(sizeof(channel_persistent_le_t));
   }
@@ -263,7 +269,7 @@ void create_and_add_channel_to_persistent_list(
   le->time = (double *)pemalloc(sizeof(double), 1);
   gpr_timespec tv = gpr_now(GPR_CLOCK_REALTIME);
   *le->time = gpr_timespec_to_micros(tv);
-  append_and_add_to_time_key_persistent_list(*le->time, key);
+  append_and_add_to_time_key_persistent_list(*le->time, le);
   new_rsrc.ptr = le;
   gpr_mu_lock(&global_persistent_list_mu);
   PHP_GRPC_PERSISTENT_LIST_UPDATE(&EG(persistent_list), key, key_len,
@@ -416,7 +422,7 @@ PHP_METHOD(Channel, __construct) {
       channel->wrapper = le->channel;
       channel->wrapper->ref_count += 1;
       le->ref_count += 1;
-      update_time_key_persistent_list(le->time, timeout);
+      update_time_key_persistent_list(le);
     }
   }
 }

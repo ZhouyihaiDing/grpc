@@ -86,8 +86,8 @@ typedef struct _channel_persistent_le {
   grpc_channel_wrapper *channel;
   double* time;
   size_t ref_count;
-  channel_persistent_le_t* next; // point to the next persistent channel who are newer than it.
-  channel_persistent_le_t* prev; // point to the next persistent channel who are older than it.
+  struct _channel_persistent_le* next; // point to the next persistent channel who are newer than it.
+  struct _channel_persistent_le* prev; // point to the next persistent channel who are older than it.
 } channel_persistent_le_t;
 
 

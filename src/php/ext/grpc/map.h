@@ -49,7 +49,7 @@ typedef struct {
   size_t capacity_remain; // When a channel is deleted, the memory won't be freed. When the next channel is created, reuse it.
   channel_persistent_le_t* header;
   channel_persistent_le_t* tail;
-} grpc_time_channel_key_map;
+} php_grpc_time_key_map;
 
 
 //struct pair_time_channel {
@@ -57,32 +57,34 @@ typedef struct {
 //    char* channel_key;
 //};
 
-void grpc_time_channel_key_map_init(grpc_time_channel_key_map* map,
+void php_grpc_time_key_map_init(php_grpc_time_key_map* map,
                                  size_t initial_capacity);
-void grpc_time_channel_key_map_destroy(grpc_time_channel_key_map* map);
+void php_grpc_time_key_map_destroy(php_grpc_time_key_map* map);
 
 /* Add a new key: given http2 semantics, new keys must always be greater than
    existing keys - this is asserted */
-void grpc_time_channel_key_map_add(grpc_time_channel_key_map* map, double key,
-                                void* value);
+void grpc_time_key_map_update(php_grpc_time_key_map* map,
+                        channel_persistent_le_t* le);
 
 /* Delete an existing key - returns the previous value of the key if it existed,
    or NULL otherwise */
-void* grpc_time_channel_key_map_delete(grpc_time_channel_key_map* map, double key);
+void php_grpc_time_key_map_add(php_grpc_time_key_map* map,
+                        channel_persistent_le_t* le);
 
 /* Return an existing key, or NULL if it does not exist */
-void* grpc_time_channel_key_map_find(grpc_time_channel_key_map* map, double key);
+void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
+                        channel_persistent_le_t* le);
 
 /* Return a random entry */
-void* grpc_time_channel_key_map_rand(grpc_time_channel_key_map* map);
+void* php_grpc_time_key_map_get_free(php_grpc_time_key_map* map,
+                        channel_persistent_le_t* le);
 
 /* How many (populated) entries are in the stream map? */
-size_t grpc_time_channel_key_map_size(grpc_time_channel_key_map* map);
+size_t php_grpc_time_key_map_capacity_remain(php_grpc_time_key_map* map);
 
 /* Callback on each stream */
-void grpc_time_channel_key_map_for_each(grpc_time_channel_key_map* map,
-                                     void (*f)(void* user_data, double key,
-                                               void* value),
-                                     void* user_data);
+size_t php_grpc_time_key_map_size(php_grpc_time_key_map* map);
+
+void* grpc_time_key_map_get_top(php_grpc_time_key_map* map);
 
 #endif /* GRPC_CORE_EXT_TRANSPORT_CHTTP2_TRANSPORT_STREAM_MAP_H */

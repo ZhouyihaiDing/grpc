@@ -18,6 +18,7 @@
 
 #include "call.h"
 #include "channel.h"
+#include "map.h"
 #include "server.h"
 #include "timeval.h"
 #include "channel_credentials.h"
@@ -101,7 +102,8 @@ PHP_MINIT_FUNCTION(grpc) {
   /* If you have INI entries, uncomment these lines
      REGISTER_INI_ENTRIES();
   */
-  grpc_time_key_map_init(&channel_register, 20);
+  size_t persisten_channel_upper_bound = 20;
+  php_grpc_time_key_map_init(&channel_register, persisten_channel_upper_bound);
   /* Register call error constants */
   REGISTER_LONG_CONSTANT("Grpc\\CALL_OK", GRPC_CALL_OK,
                          CONST_CS | CONST_PERSISTENT);
