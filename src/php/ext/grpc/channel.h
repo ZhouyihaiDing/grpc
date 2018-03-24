@@ -85,7 +85,7 @@ void php_grpc_delete_persistent_list_entry(char *key, php_grpc_int key_len
 typedef struct _channel_persistent_le {
   grpc_channel_wrapper *channel;
   double* time;
-  size_t ref_count;
+  size_t* ref_count;
   struct _channel_persistent_le* next; // point to the next persistent channel who are newer than it.
   struct _channel_persistent_le* prev; // point to the next persistent channel who are older than it.
 } channel_persistent_le_t;

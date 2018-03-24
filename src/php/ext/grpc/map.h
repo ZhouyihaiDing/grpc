@@ -87,4 +87,6 @@ size_t php_grpc_time_key_map_size(php_grpc_time_key_map* map);
 
 void* grpc_time_key_map_get_top(php_grpc_time_key_map* map);
 
+void php_grpc_time_key_map_print(php_grpc_time_key_map* map);
+
 #endif /* GRPC_CORE_EXT_TRANSPORT_CHTTP2_TRANSPORT_STREAM_MAP_H */

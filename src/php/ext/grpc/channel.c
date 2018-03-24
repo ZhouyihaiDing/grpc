@@ -76,13 +76,13 @@ PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
         if (!(PHP_GRPC_PERSISTENT_LIST_FIND(&EG(persistent_list), p->wrapper->key,
                                             key_len, rsrc))) {
           in_persistent_list = false;
-          grpc_channel_destroy(p->wrapper->wrapped);
-          free(p->wrapper->target);
-          free(p->wrapper->args_hashstr);
-          if(p->wrapper->creds_hashstr != NULL){
-            free(p->wrapper->creds_hashstr);
-            p->wrapper->creds_hashstr = NULL;
-          }
+//          grpc_channel_destroy(p->wrapper->wrapped);
+//          free(p->wrapper->target);
+//          free(p->wrapper->args_hashstr);
+//          if(p->wrapper->creds_hashstr != NULL){
+//            free(p->wrapper->creds_hashstr);
+//            p->wrapper->creds_hashstr = NULL;
+//          }
         }
         gpr_mu_unlock(&global_persistent_list_mu);
       }
@@ -102,24 +102,24 @@ PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
         // don't call channel->close().persistent list should free the
         // allocation in such case, as well as related wrapped channel.
         if (p->wrapper->wrapped != NULL) {
-          gpr_mu_lock(&p->wrapper->mu);
-          grpc_channel_destroy(p->wrapper->wrapped);
-          free(p->wrapper->target);
-          free(p->wrapper->args_hashstr);
-          if(p->wrapper->creds_hashstr != NULL){
-            free(p->wrapper->creds_hashstr);
-            p->wrapper->creds_hashstr = NULL;
-          }
-          p->wrapper->wrapped = NULL;
-          php_grpc_delete_persistent_list_entry(p->wrapper->key,
-                                                strlen(p->wrapper->key)
-                                                TSRMLS_CC);
-          gpr_mu_unlock(&p->wrapper->mu);
+//          gpr_mu_lock(&p->wrapper->mu);
+//          grpc_channel_destroy(p->wrapper->wrapped);
+//          free(p->wrapper->target);
+//          free(p->wrapper->args_hashstr);
+//          if(p->wrapper->creds_hashstr != NULL){
+//            free(p->wrapper->creds_hashstr);
+//            p->wrapper->creds_hashstr = NULL;
+//          }
+//          p->wrapper->wrapped = NULL;
+//          php_grpc_delete_persistent_list_entry(p->wrapper->key,
+//                                                strlen(p->wrapper->key)
+//                                                TSRMLS_CC);
+//          gpr_mu_unlock(&p->wrapper->mu);
         }
       }
       gpr_mu_destroy(&p->wrapper->mu);
-      free(p->wrapper->key);
-      free(p->wrapper);
+//      free(p->wrapper->key);
+//      free(p->wrapper);
     }
     p->wrapper = NULL;
   }
@@ -236,6 +236,7 @@ void create_channel(
     char *target,
     grpc_channel_args args,
     wrapped_grpc_channel_credentials *creds) {
+  php_printf("create_channel\n");
   if (creds == NULL) {
     channel->wrapper->wrapped = grpc_insecure_channel_create(target, &args,
                                                              NULL);
@@ -253,6 +254,7 @@ void create_and_add_channel_to_persistent_list(
     wrapped_grpc_channel_credentials *creds,
     char *key,
     php_grpc_int key_len TSRMLS_DC) {
+  php_printf("create_and_add_channel_to_persistent_list\n");
   php_grpc_zend_resource new_rsrc;
   channel_persistent_le_t *le;
   // this links each persistent list entry to a destructor
@@ -267,6 +269,11 @@ void create_and_add_channel_to_persistent_list(
 
   le->channel = channel->wrapper;
   le->time = (double *)pemalloc(sizeof(double), 1);
+  le->ref_count = (size_t *)pemalloc(sizeof(size_t), 1);
+  *le->time = 0;
+  *le->ref_count = 0;
+  le->next = NULL;
+  le->prev = NULL;
   gpr_timespec tv = gpr_now(GPR_CLOCK_REALTIME);
   *le->time = gpr_timespec_to_micros(tv);
   append_and_add_to_time_key_persistent_list(*le->time, le);
@@ -296,6 +303,8 @@ void create_and_add_channel_to_persistent_list(
  * @param array $args_array The arguments to pass to the Channel
  */
 PHP_METHOD(Channel, __construct) {
+  php_printf("__construct Channel\n");
+  php_grpc_time_key_map_print(&channel_register);
   wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
   zval *creds_obj = NULL;
   char *target;
@@ -409,6 +418,7 @@ PHP_METHOD(Channel, __construct) {
       create_and_add_channel_to_persistent_list(
           channel, target, args, creds, key, key_len TSRMLS_CC);
     } else {
+      php_printf("channel_already_exist_in_the_persistent_list\n");
       efree(args.args);
       if (channel->wrapper->creds_hashstr != NULL){
         free(channel->wrapper->creds_hashstr);
@@ -421,10 +431,12 @@ PHP_METHOD(Channel, __construct) {
       free(channel->wrapper);
       channel->wrapper = le->channel;
       channel->wrapper->ref_count += 1;
-      le->ref_count += 1;
+      *le->ref_count += 1;
       update_time_key_persistent_list(le);
+      php_grpc_time_key_map_print(&channel_register);
     }
   }
+  php_printf("__construct Channel ends: %s target\n", target);
 }
 
 /**
@@ -538,19 +550,19 @@ PHP_METHOD(Channel, close) {
     if (channel->wrapper->wrapped != NULL) {
       if (channel->wrapper->is_valid) {
         // Wrapped channel hasn't been destoryed by other wrapper.
-        grpc_channel_destroy(channel->wrapper->wrapped);
-        free(channel->wrapper->target);
-        free(channel->wrapper->args_hashstr);
-        if(channel->wrapper->creds_hashstr != NULL){
-          free(channel->wrapper->creds_hashstr);
-          channel->wrapper->creds_hashstr = NULL;
-        }
-        channel->wrapper->wrapped = NULL;
+//        grpc_channel_destroy(channel->wrapper->wrapped);
+//        free(channel->wrapper->target);
+//        free(channel->wrapper->args_hashstr);
+//        if(channel->wrapper->creds_hashstr != NULL){
+//          free(channel->wrapper->creds_hashstr);
+//          channel->wrapper->creds_hashstr = NULL;
+//        }
+//        channel->wrapper->wrapped = NULL;
         channel->wrapper->is_valid = false;
 
-        php_grpc_delete_persistent_list_entry(channel->wrapper->key,
-                                              strlen(channel->wrapper->key)
-                                              TSRMLS_CC);
+//        php_grpc_delete_persistent_list_entry(channel->wrapper->key,
+//                                              strlen(channel->wrapper->key)
+//                                              TSRMLS_CC);
       }
     }
     channel->wrapper->ref_count -= 1;
@@ -563,13 +575,13 @@ PHP_METHOD(Channel, close) {
   }
   gpr_mu_lock(&global_persistent_list_mu);
   if (is_last_wrapper) {
-    gpr_mu_destroy(&channel->wrapper->mu);
-    free(channel->wrapper->key);
-    free(channel->wrapper);
+//    gpr_mu_destroy(&channel->wrapper->mu);
+//    free(channel->wrapper->key);
+//    free(channel->wrapper);
   }
-  // Set channel->wrapper to NULL to avoid call close twice for the same
-  // channel.
-  channel->wrapper = NULL;
+//  // Set channel->wrapper to NULL to avoid call close twice for the same
+//  // channel.
+//  channel->wrapper = NULL;
   gpr_mu_unlock(&global_persistent_list_mu);
 }
 

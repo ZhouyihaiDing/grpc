@@ -43,17 +43,22 @@
 
 void php_grpc_time_key_map_init(php_grpc_time_key_map* map,
                                  size_t initial_capacity) {
+  php_printf("php_grpc_time_key_map_init start\n");
   GPR_ASSERT(initial_capacity > 1);
   map->header =
       (channel_persistent_le_t*)(pemalloc(sizeof(channel_persistent_le_t) * 1, true));
   map->tail =
       (channel_persistent_le_t*)(pemalloc(sizeof(channel_persistent_le_t) * 1, true));
+  map->header->next = map->tail;
+  map->tail->prev = map->header;
   map->count = 0;
   map->capacity = initial_capacity;
   map->capacity_remain = 0;
+  php_printf("php_grpc_time_key_map_init end\n");
 }
 
 void php_grpc_time_key_map_destroy(php_grpc_time_key_map* map) {
+  php_printf("php_grpc_time_key_map_destroy start\n");
   // TODO: free all capacity_remain first
   channel_persistent_le_t* cur = map->header;
   channel_persistent_le_t* tmp = NULL;
@@ -64,10 +69,12 @@ void php_grpc_time_key_map_destroy(php_grpc_time_key_map* map) {
   }
   pefree(map->header, true);
   pefree(map->tail, true);
+  php_printf("php_grpc_time_key_map_destroy end\n");
 }
 
 void grpc_time_key_map_update(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
+  php_printf("grpc_time_key_map_update start\n");
   le->prev->next = le->next;
   le->next->prev = le->prev;
 
@@ -76,11 +83,12 @@ void grpc_time_key_map_update(php_grpc_time_key_map* map,
 
   le->next = map->tail;
   map->tail->prev = le;
+  php_printf("grpc_time_key_map_update end\n");
 }
 
 void php_grpc_time_key_map_add(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
-
+  php_printf("php_grpc_time_key_map_add start\n");
   le->prev = map->tail->prev;
   le->prev->next = le;
 
@@ -88,10 +96,13 @@ void php_grpc_time_key_map_add(php_grpc_time_key_map* map,
   map->tail->prev = le;
 
   map->count += 1;
+  // map->capacity_remain -= 1;
+  php_printf("php_grpc_time_key_map_add end\n");
 }
 
 void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
+  php_printf("php_grpc_time_key_map_delete start\n");
   le->prev->next = le->next;
   le->next->prev = le->prev;
 
@@ -102,21 +113,25 @@ void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
   le->prev = map->tail;
 
   map->capacity_remain += 1;
+  php_printf("php_grpc_time_key_map_delete end\n");
   return le;
 }
 
 
 void* php_grpc_time_key_map_get_free(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
+  php_printf("php_grpc_time_key_map_get_free start\n");
   if(map->capacity_remain == 0) {
     return NULL;
   }
   channel_persistent_le_t* ret_val = map->tail->next;
   map->tail->next = ret_val->next;
+  php_printf("php_grpc_time_key_map_get_free end\n");
   return ret_val;
 }
 
 size_t php_grpc_time_key_map_capacity_remain(php_grpc_time_key_map* map) {
+  php_printf("php_grpc_time_key_map_capacity_remain: %zu\n", map->capacity_remain);
   return map->capacity_remain;
 }
 
@@ -130,15 +145,18 @@ void* grpc_time_key_map_get_top(php_grpc_time_key_map* map) {
 }
 
 
-void php_grpc_time_key_map_for_each(php_grpc_time_key_map* map,
-                                     void (*f)(void* user_data, double key,
-                                               void* value),
-                                     void* user_data) {
-//  size_t i;
-//
-//  for (i = 0; i < map->count; i++) {
-//    if (map->values[i]) {
-//      f(user_data, map->keys[i], map->values[i]);
-//    }
-//  }
+void php_grpc_time_key_map_print(php_grpc_time_key_map* map) {
+  size_t i;
+  channel_persistent_le_t* cur = map->header->next;
+  for (i = 0; i < map->count; i++) {
+    php_printf("channel: %zu, time: %ld, target: %s, key: %s, ref_count: %zu\n", i, cur->time, cur->channel->target, cur->channel->key,
+    *cur->ref_count);
+    cur = cur->next;
+  }
+  while(cur->next != NULL){
+    php_printf("=======\n");
+    php_printf("channel: %zu, time: %ld, target: %s, key: %s, ref_count: %zu\n", i, cur->time, cur->channel->target, cur->channel->key,
+    *cur->ref_count);
+    cur = cur->next;
+  }
 }
