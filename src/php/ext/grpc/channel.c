@@ -117,7 +117,7 @@ PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
 //          gpr_mu_unlock(&p->wrapper->mu);
         }
       }
-      gpr_mu_destroy(&p->wrapper->mu);
+//      gpr_mu_destroy(&p->wrapper->mu);
 //      free(p->wrapper->key);
 //      free(p->wrapper);
     }
@@ -189,24 +189,32 @@ void generate_sha1_str(char *sha1str, char *str, php_grpc_int len) {
   make_sha1_digest(sha1str, digest);
 }
 
+void print_timespec(){
+}
 void update_time_key_persistent_list(channel_persistent_le_t* le) {
+  php_printf("update_time_key_persistent_list\n");
   gpr_timespec tv = gpr_now(GPR_CLOCK_REALTIME);
-  double time_cur = gpr_timespec_to_micros(tv);
-  *le->time = time_cur;
+  //int32_t time_cur = gpr_timespec_to_micros(tv);
+  *le->time = gpr_time_to_millis(tv);
+  php_printf("old time: %" PRId32 "\n", *le->time);
+  usleep(500*1000);
+  tv = gpr_now(GPR_CLOCK_REALTIME);
+  *le->time = gpr_time_to_millis(tv);
+  php_printf("new time: %" PRId32 "\n", *le->time);
   grpc_time_key_map_update(&channel_register, le);
 }
 
-bool grpc_is_channel_expire(double time_pre, double time_cur, double timeout){
+bool grpc_is_channel_expire(int32_t time_pre, int32_t time_cur, int32_t timeout){
   if(time_cur - time_pre > timeout){
     return true;
   }
   return false;
 }
 
-void delete_timeout_from_time_key_persistent_list(double time_cur, double timeout) {
+void delete_timeout_from_time_key_persistent_list(int32_t time_cur, int32_t timeout) {
   while(php_grpc_time_key_map_size(&channel_register) > 0) {
     channel_persistent_le_t* le = (channel_persistent_le_t*)grpc_time_key_map_get_top(&channel_register);
-    double time_top = *le->time;
+    int32_t time_top = *le->time;
     if (!grpc_is_channel_expire(time_top, time_cur, timeout)) {
       break;
     }
@@ -214,13 +222,13 @@ void delete_timeout_from_time_key_persistent_list(double time_cur, double timeou
   }
 }
 
-void append_and_add_to_time_key_persistent_list(double time_cur, channel_persistent_le_t* key) {
+void append_and_add_to_time_key_persistent_list(int32_t time_cur, channel_persistent_le_t* key) {
   size_t persisten_channel_upper_bound = 20;
-  double timeout = 500 * 1000;
+  int32_t timeout = 500 * 1000;
   if (channel_register.count > persisten_channel_upper_bound) {
     // delete the top and then insert
     channel_persistent_le_t* le = (channel_persistent_le_t*)grpc_time_key_map_get_top(&channel_register);
-    double time_top = *le->time;
+    int32_t time_top = *le->time;
     if (grpc_is_channel_expire(time_top, time_cur, timeout)) {
       delete_timeout_from_time_key_persistent_list(time_cur, timeout);
     } else {
@@ -268,14 +276,14 @@ void create_and_add_channel_to_persistent_list(
   create_channel(channel, target, args, creds);
 
   le->channel = channel->wrapper;
-  le->time = (double *)pemalloc(sizeof(double), 1);
+  le->time = (int32_t *)pemalloc(sizeof(int32_t), 1);
   le->ref_count = (size_t *)pemalloc(sizeof(size_t), 1);
   *le->time = 0;
   *le->ref_count = 0;
   le->next = NULL;
   le->prev = NULL;
   gpr_timespec tv = gpr_now(GPR_CLOCK_REALTIME);
-  *le->time = gpr_timespec_to_micros(tv);
+  *le->time = gpr_time_to_millis(tv);
   append_and_add_to_time_key_persistent_list(*le->time, le);
   new_rsrc.ptr = le;
   gpr_mu_lock(&global_persistent_list_mu);
@@ -432,6 +440,7 @@ PHP_METHOD(Channel, __construct) {
       channel->wrapper = le->channel;
       channel->wrapper->ref_count += 1;
       *le->ref_count += 1;
+      php_printf("xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n");
       update_time_key_persistent_list(le);
       php_grpc_time_key_map_print(&channel_register);
     }
@@ -585,6 +594,29 @@ PHP_METHOD(Channel, close) {
   gpr_mu_unlock(&global_persistent_list_mu);
 }
 
+// test only
+PHP_METHOD(Channel, destoryPersistentList) {
+   php_grpc_time_key_map_print(&channel_register);
+   while(php_grpc_time_key_map_size(&channel_register)){
+     channel_persistent_le_t* le = grpc_time_key_map_get_top(&channel_register);
+     if(le == NULL) php_printf("xxxxxxx\n");
+     php_grpc_time_key_map_delete(&channel_register, le);
+//     php_grpc_zend_resource *rsrc;
+//     gpr_mu_lock(&le->channel->mu);
+//     if(!(PHP_GRPC_PERSISTENT_LIST_FIND(&EG(persistent_list), le->channel->key,
+//                                                     strlen(le->channel->key), rsrc))){
+//                                                     php_printf("fjhdsalkfjdsalkfjhlksahfsa\n");
+//                                                     }
+     php_grpc_delete_persistent_list_entry(le->channel->key,
+                                            strlen(le->channel->key)
+                                            TSRMLS_CC);
+//     gpr_mu_unlock(&le->channel->mu);
+   }
+   php_grpc_time_key_map_print(&channel_register);
+   php_grpc_time_key_map_re_init_test(&channel_register);
+   php_printf("destoryPersistentList\n");
+}
+
 // Delete an entry from the persistent list
 // Note: this does not destroy or close the underlying grpc_channel
 void php_grpc_delete_persistent_list_entry(char *key, php_grpc_int key_len
@@ -593,11 +625,12 @@ void php_grpc_delete_persistent_list_entry(char *key, php_grpc_int key_len
   gpr_mu_lock(&global_persistent_list_mu);
   if (PHP_GRPC_PERSISTENT_LIST_FIND(&EG(persistent_list), key,
                                     key_len, rsrc)) {
-    channel_persistent_le_t *le;
-    le = (channel_persistent_le_t *)rsrc->ptr;
-    le->channel = NULL;
     php_grpc_zend_hash_del(&EG(persistent_list), key, key_len+1);
-    free(le);
+//    channel_persistent_le_t *le;
+//    le = (channel_persistent_le_t *)rsrc->ptr;
+//    le->channel = NULL;
+//    php_grpc_zend_hash_del(&EG(persistent_list), key, key_len+1);
+//    free(le);
   }
   gpr_mu_unlock(&global_persistent_list_mu);
 }
@@ -637,6 +670,9 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO_EX(arginfo_close, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_destoryPersistentList, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
 static zend_function_entry channel_methods[] = {
   PHP_ME(Channel, __construct, arginfo_construct,
          ZEND_ACC_PUBLIC | ZEND_ACC_CTOR)
@@ -647,6 +683,8 @@ static zend_function_entry channel_methods[] = {
   PHP_ME(Channel, watchConnectivityState, arginfo_watchConnectivityState,
          ZEND_ACC_PUBLIC)
   PHP_ME(Channel, close, arginfo_close,
+         ZEND_ACC_PUBLIC)
+  PHP_ME(Channel, destoryPersistentList, arginfo_destoryPersistentList,
          ZEND_ACC_PUBLIC)
   PHP_FE_END
 };

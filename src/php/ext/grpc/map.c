@@ -51,6 +51,8 @@ void php_grpc_time_key_map_init(php_grpc_time_key_map* map,
       (channel_persistent_le_t*)(pemalloc(sizeof(channel_persistent_le_t) * 1, true));
   map->header->next = map->tail;
   map->tail->prev = map->header;
+  map->header->prev = NULL;
+  map->tail->next = NULL;
   map->count = 0;
   map->capacity = initial_capacity;
   map->capacity_remain = 0;
@@ -96,23 +98,28 @@ void php_grpc_time_key_map_add(php_grpc_time_key_map* map,
   map->tail->prev = le;
 
   map->count += 1;
-  // map->capacity_remain -= 1;
+//  map->capacity_remain -= 1;
   php_printf("php_grpc_time_key_map_add end\n");
 }
 
 void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
   php_printf("php_grpc_time_key_map_delete start\n");
+  if(le->prev->next) php_printf("aa\n");
+  if(le->next) php_printf("aa\n");
   le->prev->next = le->next;
   le->next->prev = le->prev;
 
   le->next = map->tail->next;
-  le->next->prev = le;
+  if(le->next != NULL) {
+    le->next->prev = le;
+  }
 
   map->tail->next = le;
   le->prev = map->tail;
 
-  map->capacity_remain += 1;
+//  map->capacity_remain += 1;
+  map->count -= 1;
   php_printf("php_grpc_time_key_map_delete end\n");
   return le;
 }
@@ -137,6 +144,7 @@ size_t php_grpc_time_key_map_capacity_remain(php_grpc_time_key_map* map) {
 
 
 size_t php_grpc_time_key_map_size(php_grpc_time_key_map* map) {
+  php_printf("php_grpc_time_key_map_size: %zu\n", map->count);
   return map->count;
 }
 
@@ -152,11 +160,18 @@ void php_grpc_time_key_map_print(php_grpc_time_key_map* map) {
     php_printf("channel: %zu, time: %ld, target: %s, key: %s, ref_count: %zu\n", i, cur->time, cur->channel->target, cur->channel->key,
     *cur->ref_count);
     cur = cur->next;
+    if(cur == NULL) php_printf("wrongggggggggggggggggggggggg\n");
   }
-  while(cur->next != NULL){
+  while(cur != map->tail){
     php_printf("=======\n");
     php_printf("channel: %zu, time: %ld, target: %s, key: %s, ref_count: %zu\n", i, cur->time, cur->channel->target, cur->channel->key,
     *cur->ref_count);
     cur = cur->next;
   }
+}
+
+void php_grpc_time_key_map_re_init_test(php_grpc_time_key_map* map){
+  map->header->next = map->tail;
+  map->tail->prev = map->header;
+  map->tail->next = NULL;
 }
