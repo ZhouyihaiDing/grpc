@@ -423,6 +423,7 @@ class ChannelTest extends PHPUnit_Framework_TestCase
 
     public function callbackFunc($context)
     {
+      php_printf("call_back_fund\n");
         return [];
     }
 
@@ -444,7 +445,7 @@ class ChannelTest extends PHPUnit_Framework_TestCase
         // always be created new and NOT persisted.
         $this->channel1 = new Grpc\Channel('localhost:1',
                                            ["credentials" =>
-                                            $credsWithCallCreds]);
+                                             $credsWithCallCreds]);
         $this->channel2 = new Grpc\Channel('localhost:1',
                                            ["credentials" =>
                                             $credsWithCallCreds]);
@@ -530,7 +531,6 @@ class ChannelTest extends PHPUnit_Framework_TestCase
         $this->channel2 = new Grpc\Channel('localhost:1',
                                            ["force_new" => true]);
         // channel3 shares with channel1
-        usleep(500 * 1000);
         $this->channel3 = new Grpc\Channel('localhost:1', []);
 
         // try to connect on channel2
@@ -568,27 +568,27 @@ class ChannelTest extends PHPUnit_Framework_TestCase
 //        // channel3 already closed
 //        $state = $this->channel3->getConnectivityState();
 //    }
-//
-//    public function testPersistentChannelForceNewNewChannelClose()
-//    {
-//
-//        $this->channel1 = new Grpc\Channel('localhost:1', []);
-//        $this->channel2 = new Grpc\Channel('localhost:1',
-//                                           ["force_new" => true]);
-//        $this->channel3 = new Grpc\Channel('localhost:1', []);
-//
-//        $this->channel2->close();
-//
-//        $state = $this->channel1->getConnectivityState();
-//        $this->assertEquals(GRPC\CHANNEL_IDLE, $state);
-//
-//        // can still connect on channel1
-//        $state = $this->channel1->getConnectivityState(true);
-//        $this->waitUntilNotIdle($this->channel1);
-//
-//        $state = $this->channel1->getConnectivityState();
-//        $this->assertConnecting($state);
-//
-//        $this->channel1->close();
-//    }
+
+    public function testPersistentChannelForceNewNewChannelClose()
+    {
+
+        $this->channel1 = new Grpc\Channel('localhost:1', []);
+        $this->channel2 = new Grpc\Channel('localhost:1',
+                                           ["force_new" => true]);
+        $this->channel3 = new Grpc\Channel('localhost:1', []);
+
+        $this->channel2->close();
+
+        $state = $this->channel1->getConnectivityState();
+        $this->assertEquals(GRPC\CHANNEL_IDLE, $state);
+
+        // can still connect on channel1
+        $state = $this->channel1->getConnectivityState(true);
+        $this->waitUntilNotIdle($this->channel1);
+
+        $state = $this->channel1->getConnectivityState();
+        $this->assertConnecting($state);
+
+        $this->channel1->close();
+    }
 }

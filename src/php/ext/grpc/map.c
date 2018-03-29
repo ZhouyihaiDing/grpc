@@ -64,7 +64,7 @@ void php_grpc_time_key_map_destroy(php_grpc_time_key_map* map) {
   // TODO: free all capacity_remain first
   channel_persistent_le_t* cur = map->header;
   channel_persistent_le_t* tmp = NULL;
-  while(cur != map->tail){
+  while(cur != map->tail && cur != NULL){
     tmp = cur->next;
     pefree(cur, true);
     cur = tmp;
@@ -157,20 +157,21 @@ void php_grpc_time_key_map_print(php_grpc_time_key_map* map) {
   size_t i;
   channel_persistent_le_t* cur = map->header->next;
   for (i = 0; i < map->count; i++) {
-    php_printf("channel: %zu, time: %ld, target: %s, key: %s, ref_count: %zu\n", i, cur->time, cur->channel->target, cur->channel->key,
+    php_printf("channel: %zu, target: %s, key: %s, ref_count: %zu\n", i, cur->channel->target, cur->channel->key,
     *cur->ref_count);
     cur = cur->next;
     if(cur == NULL) php_printf("wrongggggggggggggggggggggggg\n");
   }
-  while(cur != map->tail){
-    php_printf("=======\n");
-    php_printf("channel: %zu, time: %ld, target: %s, key: %s, ref_count: %zu\n", i, cur->time, cur->channel->target, cur->channel->key,
-    *cur->ref_count);
-    cur = cur->next;
-  }
+//  while(cur != map->tail){
+//    php_printf("=======\n");
+//    php_printf("channel: %zu, target: %s, key: %s, ref_count: %zu\n", i, cur->channel->target, cur->channel->key,
+//    *cur->ref_count);
+//    cur = cur->next;
+//  }
 }
 
 void php_grpc_time_key_map_re_init_test(php_grpc_time_key_map* map){
+  map->count = 0;
   map->header->next = map->tail;
   map->tail->prev = map->header;
   map->tail->next = NULL;
