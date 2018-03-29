@@ -215,21 +215,22 @@ void print_timespec(gpr_timespec* time_spec){
 gpr_timespec* grpc_php_time_copy(gpr_timespec* tv1, gpr_timespec tv2){
   tv1->tv_sec = tv2.tv_sec;
   tv1->tv_nsec = tv2.tv_nsec;
+  tv1->clock_type = tv2.clock_type;
   return tv1;
 }
 void update_time_key_persistent_list(channel_persistent_le_t* le) {
-//  php_printf("update_time_key_persistent_list\n");
-//  gpr_timespec* tv1 = (gpr_timespec *)pemalloc(sizeof(gpr_timespec), 1);
-//  grpc_php_time_copy(tv1, gpr_now(GPR_CLOCK_REALTIME));
-//
-//  le->time = tv1;
-//  print_timespec(le->time);
-//  usleep(500*1000);
-//  gpr_timespec* tv2 = (gpr_timespec *)pemalloc(sizeof(gpr_timespec), 1);
-//  grpc_php_time_copy(tv2, gpr_now(GPR_CLOCK_REALTIME));
-//  le->time = tv2;
-//  print_timespec(tv2);
-//  php_printf("time diff:::: %" PRId32 "\n", gpr_time_to_millis(gpr_time_sub(*tv2, *tv1)));
+  php_printf("update_time_key_persistent_list\n");
+  gpr_timespec* tv1 = (gpr_timespec *)pemalloc(sizeof(gpr_timespec), 1);
+  grpc_php_time_copy(tv1, gpr_now(GPR_CLOCK_REALTIME));
+
+  le->time = tv1;
+  print_timespec(le->time);
+  usleep(500*1000);
+  gpr_timespec* tv2 = (gpr_timespec *)pemalloc(sizeof(gpr_timespec), 1);
+  grpc_php_time_copy(tv2, gpr_now(GPR_CLOCK_REALTIME));
+  le->time = tv2;
+  print_timespec(tv2);
+  php_printf("time diff:::: %" PRId32 "\n", gpr_time_to_millis(gpr_time_sub(*tv2, *tv1)));
   grpc_time_key_map_update(&channel_register, le);
 }
 
@@ -506,6 +507,7 @@ PHP_METHOD(Channel, getTarget) {
  */
 PHP_METHOD(Channel, getConnectivityState) {
   php_printf("getConnectivityState start\n");
+  php_grpc_time_key_map_print(&channel_register);
   wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
   gpr_mu_lock(&channel->wrapper->mu);
   if (channel->wrapper->wrapped == NULL) {

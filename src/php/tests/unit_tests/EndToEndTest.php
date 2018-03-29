@@ -29,6 +29,9 @@ class EndToEndTest extends PHPUnit_Framework_TestCase
     public function tearDown()
     {
         $this->channel->close();
+        $channel_destory_persistent =
+          new Grpc\Channel('localhost:01010', []);
+        $channel_destory_persistent->destoryPersistentList();
     }
 
     public function testSimpleRequestBody()

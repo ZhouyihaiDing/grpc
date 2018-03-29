@@ -28,9 +28,9 @@ class ChannelTest extends PHPUnit_Framework_TestCase
         if (!empty($this->channel)) {
             $this->channel->close();
         }
-        if (!empty($this->channel1)) {
-          $this->channel1->destoryPersistentList();
-        }
+        $channel_destory_persistent =
+          new Grpc\Channel('localhost:01010', []);
+        $channel_destory_persistent->destoryPersistentList();
     }
 
     public function testInsecureCredentials()

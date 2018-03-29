@@ -27,6 +27,9 @@ class ServerTest extends PHPUnit_Framework_TestCase
     public function tearDown()
     {
         unset($this->server);
+        $channel_destory_persistent =
+            new Grpc\Channel('localhost:01010', []);
+        $channel_destory_persistent->destoryPersistentList();
     }
 
     public function testConstructorWithNull()

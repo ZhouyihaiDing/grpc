@@ -118,6 +118,8 @@ void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
   map->tail->next = le;
   le->prev = map->tail;
 
+  le->ref_count = 0;
+
 //  map->capacity_remain += 1;
   map->count -= 1;
   php_printf("php_grpc_time_key_map_delete end\n");
