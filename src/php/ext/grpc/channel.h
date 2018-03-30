@@ -44,7 +44,7 @@ typedef struct _grpc_channel_wrapper {
   // before to avoid double free.
   bool is_valid;
   // ref_count is used to let the last wrapper free related channel and key.
-  size_t ref_count;
+//  size_t ref_count;
 } grpc_channel_wrapper;
 
 /* Wrapper struct for grpc_channel that can be associated with a PHP object */

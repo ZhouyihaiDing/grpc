@@ -56,7 +56,7 @@ void php_grpc_time_key_map_init(php_grpc_time_key_map* map,
   map->count = 0;
   map->capacity = initial_capacity;
   map->capacity_remain = 0;
-  php_printf("php_grpc_time_key_map_init end\n");
+//  php_printf("php_grpc_time_key_map_init end\n");
 }
 
 void php_grpc_time_key_map_destroy(php_grpc_time_key_map* map) {
@@ -71,7 +71,7 @@ void php_grpc_time_key_map_destroy(php_grpc_time_key_map* map) {
   }
   pefree(map->header, true);
   pefree(map->tail, true);
-  php_printf("php_grpc_time_key_map_destroy end\n");
+//  php_printf("php_grpc_time_key_map_destroy end\n");
 }
 
 void grpc_time_key_map_update(php_grpc_time_key_map* map,
@@ -85,12 +85,19 @@ void grpc_time_key_map_update(php_grpc_time_key_map* map,
 
   le->next = map->tail;
   map->tail->prev = le;
-  php_printf("grpc_time_key_map_update end\n");
+//  php_printf("grpc_time_key_map_update end\n");
 }
 
 void php_grpc_time_key_map_add(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
   php_printf("php_grpc_time_key_map_add start\n");
+
+//  if(map->capacity_remain > 0){
+//    map->capacity_remain -= 1;
+//    le->prev->next = le->next;
+//    le->next->prev = le->prev;
+//  }
+
   le->prev = map->tail->prev;
   le->prev->next = le;
 
@@ -99,14 +106,12 @@ void php_grpc_time_key_map_add(php_grpc_time_key_map* map,
 
   map->count += 1;
 //  map->capacity_remain -= 1;
-  php_printf("php_grpc_time_key_map_add end\n");
+//  php_printf("php_grpc_time_key_map_add end\n");
 }
 
 void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
   php_printf("php_grpc_time_key_map_delete start\n");
-  if(le->prev->next) php_printf("aa\n");
-  if(le->next) php_printf("aa\n");
   le->prev->next = le->next;
   le->next->prev = le->prev;
 
@@ -118,11 +123,11 @@ void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
   map->tail->next = le;
   le->prev = map->tail;
 
-  le->ref_count = 0;
+  *le->ref_count = 0;
 
-//  map->capacity_remain += 1;
+  //map->capacity_remain += 1;
   map->count -= 1;
-  php_printf("php_grpc_time_key_map_delete end\n");
+//  php_printf("php_grpc_time_key_map_delete end\n");
   return le;
 }
 
@@ -151,9 +156,17 @@ size_t php_grpc_time_key_map_size(php_grpc_time_key_map* map) {
 }
 
 void* grpc_time_key_map_get_top(php_grpc_time_key_map* map) {
+  //return NULL;
+  if(map->header->next == NULL){
+     php_printf("grpc_time_key_map_get_top error\n");
+  }
   return map->header->next;
 }
 
+void grpc_time_print_timespec(gpr_timespec* time_spec){
+  php_printf("time spec: second -- %" PRId64 "  nsecond %" PRId32 "\n",
+      time_spec->tv_sec , time_spec->tv_nsec);
+}
 
 void php_grpc_time_key_map_print(php_grpc_time_key_map* map) {
   size_t i;
@@ -161,15 +174,25 @@ void php_grpc_time_key_map_print(php_grpc_time_key_map* map) {
   for (i = 0; i < map->count; i++) {
     php_printf("channel: %zu, target: %s, key: %s, ref_count: %zu\n", i, cur->channel->target, cur->channel->key,
     *cur->ref_count);
+    grpc_time_print_timespec(cur->time);
     cur = cur->next;
-    if(cur == NULL) php_printf("wrongggggggggggggggggggggggg\n");
   }
-//  while(cur != map->tail){
-//    php_printf("=======\n");
-//    php_printf("channel: %zu, target: %s, key: %s, ref_count: %zu\n", i, cur->channel->target, cur->channel->key,
-//    *cur->ref_count);
-//    cur = cur->next;
-//  }
+  // cur is in tail.
+  if(cur == NULL) php_printf("wrongggggggggggggggggggggggg\n");
+  //if(cur == map->tail) php_printf("righttttttttttttttttttttttttttttt\n");
+  cur = cur->next;
+  while(cur != NULL){
+    php_printf("=======\n");
+    if(cur->channel != NULL){
+      php_printf("channel: %zu, target: %s, key: %s, ref_count: %zu\n", i, cur->channel->target, cur->channel->key,
+        *cur->ref_count);
+      grpc_time_print_timespec(cur->time);
+    } else {
+      php_printf("channel = NULL xxxxx wrongggggg\n");
+    }
+    cur = cur->next;
+    i++;
+  }
 }
 
 void php_grpc_time_key_map_re_init_test(php_grpc_time_key_map* map){
