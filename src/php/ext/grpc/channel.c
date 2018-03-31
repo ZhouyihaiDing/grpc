@@ -251,7 +251,9 @@ void delete_timeout_from_time_key_persistent_list(gpr_timespec time_cur) {
               (php_grpc_time_key_map_size(&channel_register) == 0)) {
       break;
     }
-    php_grpc_time_key_map_delete(&channel_register, le);
+    if(le->ref_count == 0){
+      php_grpc_time_key_map_delete(&channel_register, le);
+    }
   }
 }
 
@@ -306,7 +308,7 @@ void create_and_add_channel_to_persistent_list(
 
   gpr_timespec channel_creation_time = gpr_now(GPR_CLOCK_REALTIME);
 
-  // delete_timeout_from_time_key_persistent_list(channel_creation_time);
+  delete_timeout_from_time_key_persistent_list(channel_creation_time);
   le = grpc_time_key_map_get_first_free(&channel_register);
   if(le != NULL) {
      php_printf("should use the first free of the persistent_list\n");
