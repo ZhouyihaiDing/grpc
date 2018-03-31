@@ -58,6 +58,11 @@ void php_grpc_time_key_map_init(php_grpc_time_key_map* map,
 //  php_printf("php_grpc_time_key_map_init end\n");
 }
 
+void grpc_time_print_timespec(gpr_timespec* time_spec){
+  php_printf("time spec: second -- %" PRId64 "  nsecond %" PRId32 "\n",
+      time_spec->tv_sec , time_spec->tv_nsec);
+}
+
 void php_grpc_time_key_map_destroy(php_grpc_time_key_map* map) {
   php_printf("php_grpc_time_key_map_destroy start\n");
   channel_persistent_le_t* cur = map->header;
@@ -103,6 +108,10 @@ void php_grpc_time_key_map_append(php_grpc_time_key_map* map,
 void* php_grpc_time_key_map_delete(php_grpc_time_key_map* map,
                         channel_persistent_le_t* le) {
   php_printf("php_grpc_time_key_map_delete start\n");
+  php_printf("deleting channel: target: %s, key: %s, ref_count: %zu\n", le->channel->target,
+      le->channel->key, *le->ref_count);
+  grpc_time_print_timespec(le->time);
+  php_printf("----------------------------------------\n");
   le->prev->next = le->next;
   le->next->prev = le->prev;
 
@@ -145,18 +154,21 @@ void* grpc_time_key_map_get_top(php_grpc_time_key_map* map) {
   return map->header->next;
 }
 
-void* grpc_time_key_map_get_first_free(php_grpc_time_key_map* map) {
+bool grpc_is_channel_expire1(gpr_timespec time_pre, gpr_timespec time_cur, int32_t timeout){
+  php_printf("grpc_is_channel_expire\n");
+  if(gpr_time_to_millis(gpr_time_sub(time_cur, time_pre)) >= timeout){
+    return true;
+  }
+  return false;
+}
+
+void* grpc_time_key_map_get_first_free(php_grpc_time_key_map* map, gpr_timespec time_cur, int32_t timeout) {
   channel_persistent_le_t* cur = map->header->next;
-//  while(cur != map->tail){
-//    if(*cur->ref_count == 0) {
-//      break;
-//    }
-//    cur = cur->next;
-//  }
   php_printf("grpc_time_key_map_get_first_free channel count: %zu\n", *map->count);
   size_t i;
   for (i = 0; i < *map->count; i++) {
-    if(*cur->ref_count == 0) {
+    if(*cur->ref_count == 0 &&
+        grpc_is_channel_expire1(time_cur, *cur->time, timeout)) {
       break;
     }
     cur = cur->next;
@@ -167,11 +179,6 @@ void* grpc_time_key_map_get_first_free(php_grpc_time_key_map* map) {
   }
   php_printf("return pos 2\n");
   return cur;
-}
-
-void grpc_time_print_timespec(gpr_timespec* time_spec){
-  php_printf("time spec: second -- %" PRId64 "  nsecond %" PRId32 "\n",
-      time_spec->tv_sec , time_spec->tv_nsec);
 }
 
 void php_grpc_time_key_map_print(php_grpc_time_key_map* map) {

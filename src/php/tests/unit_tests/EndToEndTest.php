@@ -32,6 +32,8 @@ class EndToEndTest extends PHPUnit_Framework_TestCase
         $channel_destory_persistent =
           new Grpc\Channel('localhost:01010', []);
         $channel_destory_persistent->destoryPersistentList();
+        $channel_destory_persistent->printPersistentList();
+        $channel_destory_persistent->initPersistentList();
     }
 
     public function testSimpleRequestBody()

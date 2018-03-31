@@ -80,6 +80,6 @@ void php_grpc_time_key_map_print(php_grpc_time_key_map* map);
 // only for test
 void php_grpc_time_key_map_re_init_test(php_grpc_time_key_map* map);
 
-void* grpc_time_key_map_get_first_free(php_grpc_time_key_map* map);
+void* grpc_time_key_map_get_first_free(php_grpc_time_key_map* map, gpr_timespec time_cur, int32_t timeout);
 
 #endif /* GRPC_CORE_EXT_TRANSPORT_CHTTP2_TRANSPORT_STREAM_MAP_H */

@@ -28,9 +28,9 @@ class PersistentListTest extends PHPUnit_Framework_TestCase
 
         $channel_destory_persistent =
           new Grpc\Channel('localhost:01010', []);
-//        $channel_destory_persistent->destoryPersistentList();
-//        $channel_destory_persistent->printPersistentList();
-//        $channel_destory_persistent->initPersistentList();
+        $channel_destory_persistent->destoryPersistentList();
+        $channel_destory_persistent->printPersistentList();
+        $channel_destory_persistent->initPersistentList();
     }
 
 
@@ -71,16 +71,15 @@ class PersistentListTest extends PHPUnit_Framework_TestCase
       // the default timeout is 30ms.
       $this->channel1 = new Grpc\Channel('localhost:1', []);
       $this->channel1->printPersistentList();
+      $this->channel1->close();
       usleep(15*1000);
       $this->channel2 = new Grpc\Channel('localhost:2', []);
       $this->channel1->printPersistentList();
+      $this->channel2->close();
       usleep(31*1000);
       $this->channel3 = new Grpc\Channel('localhost:3', []);
       echo "channel1 and channel2 should be expiredddddddddddddddddd-------------\n";
       $this->channel1->printPersistentList();
-
-      $this->channel1->close();
-      $this->channel2->close();
       $this->channel3->close();
     }
 
