@@ -255,25 +255,22 @@ void delete_timeout_from_time_key_persistent_list(gpr_timespec time_cur) {
   }
 }
 
-void append_and_update_to_time_key_persistent_list(channel_persistent_le_t* key) {
+void update_time_key_persistent_list(channel_persistent_le_t* le) {
   php_printf("update_time_key_persistent_list\n");
+  // le is reusing the existing allocation in the persistent list whose ref_count == 0,
+  // which needs to remove from the linked list appropriately.
+  php_grpc_time_key_map_update(&channel_register, le);
+}
+
+void append_and_update_to_time_key_persistent_list(channel_persistent_le_t* le) {
   if(le->prev == NULL && le->next == NULL) {
-    php_grpc_time_key_map_update(&channel_register, le);
+    php_printf("append_time_key_persistent_list\n");
+    php_grpc_time_key_map_append(&channel_register, le);
     return;
   }
   // le is reusing the existing allocation in the persistent list whose ref_count == 0,
   // which needs to remove from the linked list appropriately.
-  append_and_update_to_time_key_persistent_list(le);
-  php_grpc_time_key_map_append(&channel_register, (channel_persistent_le_t*)key);
-}
-
-void update_time_key_persistent_list(channel_persistent_le_t* le) {
-    php_grpc_time_key_map_update(&channel_register, le);
-   return;
-  }
-  // le is reusing the existing allocation in the persistent list whose ref_count == 0,
-  // which needs to remove from the linked list appropriately.
-  append_and_update_to_time_key_persistent_list(le);
+  update_time_key_persistent_list(le);
 }
 
 void create_channel(
@@ -309,16 +306,19 @@ void create_and_add_channel_to_persistent_list(
 
   gpr_timespec channel_creation_time = gpr_now(GPR_CLOCK_REALTIME);
 
-  delete_timeout_from_time_key_persistent_list(channel_creation_time);
-  if(php_grpc_time_key_map_size(&channel_register) >= (*persisten_channel_upper_bound)) {
-     le = grpc_time_key_map_get_first_free(&channel_register);
-     if(le == NULL) {
-       // if the persistent list is full and no channel in the persistent list has ref_cound = 0,
-       // can't persist this channel.
-       return;
-     }
+  // delete_timeout_from_time_key_persistent_list(channel_creation_time);
+  le = grpc_time_key_map_get_first_free(&channel_register);
+  if(le != NULL) {
      php_printf("should use the first free of the persistent_list\n");
-     // TODO: free this channel in the persistent list.
+     php_printf("remove key %s from the persistent list\n", le->channel->key);
+     if(le->channel->wrapped != NULL) {
+       php_printf("if(le->channel->wrapped != NULL)\n");
+       grpc_channel_destroy(le->channel->wrapped);
+       le->channel->wrapped = NULL;
+     }
+     php_grpc_delete_persistent_list_entry(le->channel->key,
+                                           strlen(le->channel->key)
+                                           TSRMLS_CC);
   } else {
     le = malloc(sizeof(channel_persistent_le_t));
     le->next = NULL;
@@ -674,6 +674,7 @@ PHP_METHOD(Channel, close) {
 // test only
 PHP_METHOD(Channel, destoryPersistentList) {
     php_printf("destoryPersistentList\n");
+    php_printf("size before destroy: %zu\n", php_grpc_time_key_map_size(&channel_register));
 //   php_grpc_time_key_map_print(&channel_register);
    int count = 0;
    while(php_grpc_time_key_map_size(&channel_register) != 0){
@@ -692,16 +693,12 @@ PHP_METHOD(Channel, destoryPersistentList) {
        }
       if (le->channel != NULL) {
         if (le->channel->wrapped != NULL) {
+            php_printf("destory channel !!!!!!!!!!!!!!!!!!!!!!\n");
             grpc_channel_destroy(le->channel->wrapped);
             le->channel->wrapped = NULL;
             // le->channel = NULL;
           }
       }
-
-//       grpc_channel_destroy(le->channel->wrapped);
-//     php_grpc_delete_persistent_list_entry(le->channel->key,
-//                                            strlen(le->channel->key)
-//                                            TSRMLS_CC);
 //     gpr_mu_unlock(&le->channel->mu);
    }
 }

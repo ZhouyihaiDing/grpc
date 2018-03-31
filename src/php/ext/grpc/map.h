@@ -42,19 +42,11 @@
    Adds are restricted to strictly higher keys than previously seen (this is
    guaranteed by http2). */
 typedef struct {
-//  double* keys;
-//  void** values;
-  size_t count;
-  size_t capacity;
+  size_t* count;
   channel_persistent_le_t* header;
   channel_persistent_le_t* tail;
 } php_grpc_time_key_map;
 
-
-//struct pair_time_channel {
-//    size_t timestamp;
-//    char* channel_key;
-//};
 
 void php_grpc_time_key_map_init(php_grpc_time_key_map* map,
                                  size_t initial_capacity);
