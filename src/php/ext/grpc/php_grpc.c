@@ -18,6 +18,7 @@
 
 #include "call.h"
 #include "channel.h"
+#include "map.h"
 #include "server.h"
 #include "timeval.h"
 #include "channel_credentials.h"
@@ -37,6 +38,9 @@
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
 
+php_grpc_time_key_map channel_register;
+int32_t* persistent_channel_timeout;
+size_t* persisten_channel_upper_bound;
 /* {{{ grpc_functions[]
  *
  * Every user visible function must have an entry in grpc_functions[].
@@ -99,6 +103,17 @@ PHP_MINIT_FUNCTION(grpc) {
   /* If you have INI entries, uncomment these lines
      REGISTER_INI_ENTRIES();
   */
+//  size_t persisten_channel_upper_bound = 20;
+
+  persistent_channel_timeout =
+        (int32_t*)(pemalloc(sizeof(int32_t) * 1, true));
+  persisten_channel_upper_bound =
+        (size_t*)(pemalloc(sizeof(size_t) * 1, true));
+  // default timeout equals 30ms.
+  *persistent_channel_timeout = 30;
+  *persisten_channel_upper_bound = 3;
+
+  php_grpc_time_key_map_init(&channel_register, *persisten_channel_upper_bound);
   /* Register call error constants */
   REGISTER_LONG_CONSTANT("Grpc\\CALL_OK", GRPC_CALL_OK,
                          CONST_CS | CONST_PERSISTENT);
@@ -227,6 +242,7 @@ PHP_MINIT_FUNCTION(grpc) {
   grpc_init_channel_credentials(TSRMLS_C);
   grpc_init_call_credentials(TSRMLS_C);
   grpc_init_server_credentials(TSRMLS_C);
+  php_printf("PHP_MINIT_FUNCTION ends\n");
   return SUCCESS;
 }
 /* }}} */
