@@ -237,6 +237,19 @@ class ChannelTest extends PHPUnit_Framework_TestCase
         $this->channel2->close();
     }
 
+    public function testPersistentChannelMultipleHost()
+    {
+        // two different underlying channels because different hostname
+        $this->channel1 = new Grpc\Channel('localhost:1', []);
+        $this->channel2 = new Grpc\Channel('localhost:2', []);
+        $this->channel3 = new Grpc\Channel('localhost:3', []);
+        $this->channel4 = new Grpc\Channel('localhost:4', []);
+        $this->channel5 = new Grpc\Channel('localhost:5', []);
+        $this->channel6 = new Grpc\Channel('localhost:6', []);
+//        $this->channel1->close();
+//        $this->channel2->close();
+    }
+
     public function testPersistentChannelSameArgs()
     {
         $this->channel1 = new Grpc\Channel('localhost:1', ["abc" => "def"]);

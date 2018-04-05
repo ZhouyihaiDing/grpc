@@ -36,7 +36,8 @@
 
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
-
+HashTable grpc_persistent_list;
+extern void plist_entry_destructor(void *ptr);
 /* {{{ grpc_functions[]
  *
  * Every user visible function must have an entry in grpc_functions[].
@@ -227,6 +228,7 @@ PHP_MINIT_FUNCTION(grpc) {
   grpc_init_channel_credentials(TSRMLS_C);
   grpc_init_call_credentials(TSRMLS_C);
   grpc_init_server_credentials(TSRMLS_C);
+  zend_hash_init_ex(&grpc_persistent_list, 8, NULL, plist_entry_destructor, 1, 0);
   return SUCCESS;
 }
 /* }}} */
