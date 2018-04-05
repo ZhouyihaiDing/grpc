@@ -243,6 +243,8 @@ class ChannelTest extends PHPUnit_Framework_TestCase
         $this->channel1 = new Grpc\Channel('localhost:1', []);
         $this->channel2 = new Grpc\Channel('localhost:2', []);
         $this->channel3 = new Grpc\Channel('localhost:3', []);
+        $state = $this->channel3->getConnectivityState(true);
+        $this->waitUntilNotIdle($this->channel3);
         $this->channel4 = new Grpc\Channel('localhost:4', []);
         $this->channel5 = new Grpc\Channel('localhost:5', []);
         $this->channel6 = new Grpc\Channel('localhost:6', []);

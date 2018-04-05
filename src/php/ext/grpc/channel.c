@@ -158,50 +158,24 @@ void generate_sha1_str(char *sha1str, char *str, php_grpc_int len) {
   make_sha1_digest(sha1str, digest);
 }
 
+const char *grpc_connectivity_state_name(grpc_connectivity_state state) {
+  switch (state) {
+    case GRPC_CHANNEL_IDLE:
+      return "IDLE";
+    case GRPC_CHANNEL_CONNECTING:
+      return "CONNECTING";
+    case GRPC_CHANNEL_READY:
+      return "READY";
+    case GRPC_CHANNEL_TRANSIENT_FAILURE:
+      return "TRANSIENT_FAILURE";
+    case GRPC_CHANNEL_SHUTDOWN:
+      return "SHUTDOWN";
+  }
+  return "UNKNOWN";
+}
+
 void php_print_grpc_persistent_list(){
   php_printf("grpc persistent list zend_hash_count: %zu\n", zend_array_count(&grpc_persistent_list));
-//
-//  PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(&grpc_persistent_list, key, key_type, data)
-//    php_printf("key: %s\n", key);
-//    //channel_persistent_le_t* le = Z_PTR_P(data);
-//    //php_printf("target: %s\n", le->channel->key);
-//    //php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
-//    if (key_type != HASH_KEY_IS_STRING) {
-//      php_printf("%s \n", data);
-//      zend_throw_exception(spl_ce_InvalidArgumentException,
-//                           "args keys must be strings", 1 TSRMLS_CC);
-//      return;
-//    }
-////    args->args[args_index].key = key;
-////    switch (Z_TYPE_P(data)) {
-////    case IS_LONG:
-////      args->args[args_index].value.integer = (int)Z_LVAL_P(data);
-////      args->args[args_index].type = GRPC_ARG_INTEGER;
-////      break;
-////    case IS_STRING:
-////      args->args[args_index].value.string = Z_STRVAL_P(data);
-////      args->args[args_index].type = GRPC_ARG_STRING;
-////      break;
-////    default:
-////      zend_throw_exception(spl_ce_InvalidArgumentException,
-////                           "args values must be int or string", 1 TSRMLS_CC);
-////      return FAILURE;
-////    }
-////    args_index++;
-//  PHP_GRPC_HASH_FOREACH_END()
-  // Iterate all values
-
-//    zval *data;
-//    zend_string *str;
-//    ZEND_HASH_FOREACH_STR_KEY_VAL(&grpc_persistent_list, str, data) {
-//      php_printf("key: %s\n", str->val);
-//      if(Z_TYPE_P(data) == IS_OBJECT) php_printf("is object\n");
-//      php_grpc_zend_resource *rsrc = zend_hash_get_current_data_ptr_ex(&grpc_persistent_list, );
-//      channel_persistent_le_t* le = rsrc->ptr;
-//      php_printf("key:%s, val: %s\n", le->channel->key, le->channel->target);
-//
-//    } ZEND_HASH_FOREACH_END();
-
   HashPosition pos;
   zend_hash_internal_pointer_reset_ex(&grpc_persistent_list, &pos);
   int count = 0;
@@ -211,31 +185,32 @@ void php_print_grpc_persistent_list(){
       break;
     }
     count++;
-    php_printf("has channel count = %d \n", count);
     php_grpc_zend_resource *rsrc  = zend_hash_get_current_data_ptr_ex(&grpc_persistent_list, &pos);
-    php_printf("has channel count = %d \n", count);
     if (rsrc == NULL) {
       break;
     }
     channel_persistent_le_t* le = rsrc->ptr;
     php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
+
+    gpr_mu_lock(&le->channel->mu);
+    if (le->channel->wrapped == NULL) {
+      php_printf("this channel is deleted, which should be wrong\n");
+    }
+
+    bool try_to_connect = false;
+    grpc_connectivity_state state = grpc_channel_check_connectivity_state(le->channel->wrapped,
+                                                      (int)try_to_connect);
+    // this can happen if another shared Channel object close the underlying
+    // channel
+    if (state == GRPC_CHANNEL_SHUTDOWN) {
+      php_printf("this channel is deleting, which should be wrong\n");
+      le->channel->wrapped = NULL;
+    }
+    php_printf("status: %s\n", grpc_connectivity_state_name(state));
+    gpr_mu_unlock(&le->channel->mu);
   }
 
 
-//  for (zend_hash_internal_pointer_reset_ex(&grpc_persistent_list, &pos);
-//       zend_hash_get_current_data(&grpc_persistent_list) == SUCCESS;
-//       zend_hash_move_forward(&grpc_persistent_list)
-//  ) {
-////      data = zend_hash_get_current_data(&grpc_persistent_list);
-////      channel_persistent_le_t* le = (channel_persistent_le_t*) data;
-////      php_printf("target: %s\n", le->channel->target);
-////      /* Do something with data */
-////      char *key = NULL;
-////      ulong index;
-////      zend_hash_get_current_key_ex(ht, &key, &index, 0, &position)
-////      php_printf("key: %s\n", key);
-//        zend_hash_get_current_key_zval_ex()
-//  }
 }
 
 void create_channel(

@@ -37,7 +37,6 @@
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
 HashTable grpc_persistent_list;
-extern void plist_entry_destructor(void *ptr);
 /* {{{ grpc_functions[]
  *
  * Every user visible function must have an entry in grpc_functions[].
