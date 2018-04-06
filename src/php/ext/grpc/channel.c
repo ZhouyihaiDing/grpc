@@ -174,41 +174,67 @@ const char *grpc_connectivity_state_name(grpc_connectivity_state state) {
   return "UNKNOWN";
 }
 
+//void php_print_grpc_persistent_list(){
+//  php_printf("grpc persistent list zend_hash_count: %zu\n", zend_array_count(&grpc_persistent_list));
+//  HashPosition pos;
+//  zend_hash_internal_pointer_reset_ex(&grpc_persistent_list, &pos);
+//  int count = 0;
+//  while(1) {
+//    if( zend_hash_move_forward_ex(&grpc_persistent_list, &pos) != SUCCESS) {
+//      php_printf("break while count = %d \n", count);
+//      break;
+//    }
+//    count++;
+//    zval* data = NULL;
+//    data = zend_hash_get_current_data_ex(&grpc_persistent_list, &pos);
+//    if(data == NULL) {
+//      break;
+//    }
+//    //php_grpc_zend_resource *rsrc  = zend_hash_get_current_data_ptr_ex(&grpc_persistent_list, &pos);
+//    php_grpc_zend_resource *rsrc  = Z_PTR_P(data);
+//    //if (rsrc == NULL) {
+//    //  break;
+//    //}
+//    channel_persistent_le_t* le = rsrc->ptr;
+//    php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
+//
+//    gpr_mu_lock(&le->channel->mu);
+//    if (le->channel->wrapped == NULL) {
+//      php_printf("this channel is deleted, which should be wrong\n");
+//    }
+//
+//    bool try_to_connect = false;
+//    grpc_connectivity_state state = grpc_channel_check_connectivity_state(le->channel->wrapped,
+//                                                      (int)try_to_connect);
+//    // this can happen if another shared Channel object close the underlying
+//    // channel
+//    if (state == GRPC_CHANNEL_SHUTDOWN) {
+//      php_printf("this channel is deleting, which should be wrong\n");
+//      le->channel->wrapped = NULL;
+//    }
+//    php_printf("status: %s\n", grpc_connectivity_state_name(state));
+//    gpr_mu_unlock(&le->channel->mu);
+//  }
+//}
+
 void php_print_grpc_persistent_list(){
-  php_printf("grpc persistent list zend_hash_count: %zu\n", zend_array_count(&grpc_persistent_list));
-  HashPosition pos;
-  zend_hash_internal_pointer_reset_ex(&grpc_persistent_list, &pos);
-  int count = 0;
-  while(1) {
-    if( zend_hash_move_forward_ex(&grpc_persistent_list, &pos) != SUCCESS) {
-      php_printf("break while count = %d \n", count);
-      break;
-    }
-    count++;
-    php_grpc_zend_resource *rsrc  = zend_hash_get_current_data_ptr_ex(&grpc_persistent_list, &pos);
+  char *key = NULL;
+  zval *data;
+  int key_type;
+  php_printf("php_print_grpc_persistent_list\n");
+  PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(&grpc_persistent_list, key, key_type, data)
+    php_grpc_zend_resource *rsrc  = Z_PTR_P(data);
     if (rsrc == NULL) {
+      php_printf("rsrc == NULL, %s, %d\n", key, key_type);
       break;
     }
     channel_persistent_le_t* le = rsrc->ptr;
     php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
-
-    gpr_mu_lock(&le->channel->mu);
-    if (le->channel->wrapped == NULL) {
-      php_printf("this channel is deleted, which should be wrong\n");
-    }
-
     bool try_to_connect = false;
     grpc_connectivity_state state = grpc_channel_check_connectivity_state(le->channel->wrapped,
-                                                      (int)try_to_connect);
-    // this can happen if another shared Channel object close the underlying
-    // channel
-    if (state == GRPC_CHANNEL_SHUTDOWN) {
-      php_printf("this channel is deleting, which should be wrong\n");
-      le->channel->wrapped = NULL;
-    }
+                                                       (int)try_to_connect);
     php_printf("status: %s\n", grpc_connectivity_state_name(state));
-    gpr_mu_unlock(&le->channel->mu);
-  }
+  PHP_GRPC_HASH_FOREACH_END()
 }
 
 void create_channel(
