@@ -223,7 +223,7 @@ void php_print_grpc_persistent_list(){
   int key_type;
   php_printf("php_print_grpc_persistent_list\n");
   PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(&grpc_persistent_list, key, key_type, data)
-    php_grpc_zend_resource *rsrc  = Z_PTR_P(data);
+    php_grpc_zend_resource *rsrc  = (php_grpc_zend_resource*) PHP_GRPC_HASH_VALPTR_TO_VAL(data)
     if (rsrc == NULL) {
       php_printf("rsrc == NULL, %s, %d\n", key, key_type);
       break;
@@ -235,6 +235,28 @@ void php_print_grpc_persistent_list(){
                                                        (int)try_to_connect);
     php_printf("status: %s\n", grpc_connectivity_state_name(state));
   PHP_GRPC_HASH_FOREACH_END()
+
+//  HashPosition position;
+//  zval **data = NULL;
+//  for (zend_hash_internal_pointer_reset_ex(&grpc_persistent_list, &position);
+//       zend_hash_get_current_data_ex(&grpc_persistent_list, (void**) &data, &position) == SUCCESS;
+//       zend_hash_move_forward_ex(&grpc_persistent_list, &position)) {
+//
+//       /* by now we have data set and can use Z_ macros for accessing type and variable data */
+//
+//       char *key = NULL;
+//       uint  klen;
+//       ulong index;
+//
+//       if (zend_hash_get_current_key_ex(&grpc_persistent_list, &key, &klen, &index, 0, &position) == HASH_KEY_IS_STRING) {
+//           /* the key is a string, key and klen will be set */
+//           php_grpc_zend_resource *rsrc  = (php_grpc_zend_resource*) data;
+//           channel_persistent_le_t* le = rsrc->ptr;
+//           php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
+//       } else {
+//           /* we assume the key to be long, index will be set */
+//       }
+//  }
 }
 
 void create_channel(
