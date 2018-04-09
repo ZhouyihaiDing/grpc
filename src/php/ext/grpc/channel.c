@@ -54,6 +54,7 @@ static zend_object_handlers channel_ce_handlers;
 #endif
 static gpr_mu global_persistent_list_mu;
 int le_plink;
+extern HashTable grpc_persistent_list;
 
 /* Frees and destroys an instance of wrapped_grpc_channel */
 PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
@@ -68,7 +69,7 @@ PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_channel)
         php_grpc_int key_len = strlen(p->wrapper->key);
         // only destroy the channel here if not found in the persistent list
         gpr_mu_lock(&global_persistent_list_mu);
-        if (!(PHP_GRPC_PERSISTENT_LIST_FIND(&EG(persistent_list), p->wrapper->key,
+        if (!(PHP_GRPC_PERSISTENT_LIST_FIND(&grpc_persistent_list, p->wrapper->key,
                                             key_len, rsrc))) {
           in_persistent_list = false;
           grpc_channel_destroy(p->wrapper->wrapped);
@@ -157,6 +158,107 @@ void generate_sha1_str(char *sha1str, char *str, php_grpc_int len) {
   make_sha1_digest(sha1str, digest);
 }
 
+const char *grpc_connectivity_state_name(grpc_connectivity_state state) {
+  switch (state) {
+    case GRPC_CHANNEL_IDLE:
+      return "IDLE";
+    case GRPC_CHANNEL_CONNECTING:
+      return "CONNECTING";
+    case GRPC_CHANNEL_READY:
+      return "READY";
+    case GRPC_CHANNEL_TRANSIENT_FAILURE:
+      return "TRANSIENT_FAILURE";
+    case GRPC_CHANNEL_SHUTDOWN:
+      return "SHUTDOWN";
+  }
+  return "UNKNOWN";
+}
+
+//void php_print_grpc_persistent_list(){
+//  php_printf("grpc persistent list zend_hash_count: %zu\n", zend_array_count(&grpc_persistent_list));
+//  HashPosition pos;
+//  zend_hash_internal_pointer_reset_ex(&grpc_persistent_list, &pos);
+//  int count = 0;
+//  while(1) {
+//    if( zend_hash_move_forward_ex(&grpc_persistent_list, &pos) != SUCCESS) {
+//      php_printf("break while count = %d \n", count);
+//      break;
+//    }
+//    count++;
+//    zval* data = NULL;
+//    data = zend_hash_get_current_data_ex(&grpc_persistent_list, &pos);
+//    if(data == NULL) {
+//      break;
+//    }
+//    //php_grpc_zend_resource *rsrc  = zend_hash_get_current_data_ptr_ex(&grpc_persistent_list, &pos);
+//    php_grpc_zend_resource *rsrc  = Z_PTR_P(data);
+//    //if (rsrc == NULL) {
+//    //  break;
+//    //}
+//    channel_persistent_le_t* le = rsrc->ptr;
+//    php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
+//
+//    gpr_mu_lock(&le->channel->mu);
+//    if (le->channel->wrapped == NULL) {
+//      php_printf("this channel is deleted, which should be wrong\n");
+//    }
+//
+//    bool try_to_connect = false;
+//    grpc_connectivity_state state = grpc_channel_check_connectivity_state(le->channel->wrapped,
+//                                                      (int)try_to_connect);
+//    // this can happen if another shared Channel object close the underlying
+//    // channel
+//    if (state == GRPC_CHANNEL_SHUTDOWN) {
+//      php_printf("this channel is deleting, which should be wrong\n");
+//      le->channel->wrapped = NULL;
+//    }
+//    php_printf("status: %s\n", grpc_connectivity_state_name(state));
+//    gpr_mu_unlock(&le->channel->mu);
+//  }
+//}
+
+void php_print_grpc_persistent_list(){
+  char *key = NULL;
+  zval *data;
+  int key_type;
+  php_printf("php_print_grpc_persistent_list\n");
+  PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(&grpc_persistent_list, key, key_type, data)
+    php_grpc_zend_resource *rsrc  = (php_grpc_zend_resource*) PHP_GRPC_HASH_VALPTR_TO_VAL(data)
+    if (rsrc == NULL) {
+      php_printf("rsrc == NULL, %s, %d\n", key, key_type);
+      break;
+    }
+    channel_persistent_le_t* le = rsrc->ptr;
+    php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
+    bool try_to_connect = false;
+    grpc_connectivity_state state = grpc_channel_check_connectivity_state(le->channel->wrapped,
+                                                       (int)try_to_connect);
+    php_printf("status: %s\n", grpc_connectivity_state_name(state));
+  PHP_GRPC_HASH_FOREACH_END()
+
+//  HashPosition position;
+//  zval **data = NULL;
+//  for (zend_hash_internal_pointer_reset_ex(&grpc_persistent_list, &position);
+//       zend_hash_get_current_data_ex(&grpc_persistent_list, (void**) &data, &position) == SUCCESS;
+//       zend_hash_move_forward_ex(&grpc_persistent_list, &position)) {
+//
+//       /* by now we have data set and can use Z_ macros for accessing type and variable data */
+//
+//       char *key = NULL;
+//       uint  klen;
+//       ulong index;
+//
+//       if (zend_hash_get_current_key_ex(&grpc_persistent_list, &key, &klen, &index, 0, &position) == HASH_KEY_IS_STRING) {
+//           /* the key is a string, key and klen will be set */
+//           php_grpc_zend_resource *rsrc  = (php_grpc_zend_resource*) data;
+//           channel_persistent_le_t* le = rsrc->ptr;
+//           php_printf("key: %s, target: %s\n", le->channel->key, le->channel->target);
+//       } else {
+//           /* we assume the key to be long, index will be set */
+//       }
+//  }
+}
+
 void create_channel(
     wrapped_grpc_channel *channel,
     char *target,
@@ -188,9 +290,10 @@ void create_and_add_channel_to_persistent_list(
   create_channel(channel, target, args, creds);
 
   le->channel = channel->wrapper;
+  le->ref_count = 1;
   new_rsrc.ptr = le;
   gpr_mu_lock(&global_persistent_list_mu);
-  PHP_GRPC_PERSISTENT_LIST_UPDATE(&EG(persistent_list), key, key_len,
+  PHP_GRPC_PERSISTENT_LIST_UPDATE(&grpc_persistent_list, key, key_len,
                                   (void *)&new_rsrc);
   gpr_mu_unlock(&global_persistent_list_mu);
 }
@@ -215,6 +318,7 @@ void create_and_add_channel_to_persistent_list(
  */
 PHP_METHOD(Channel, __construct) {
   wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
+  php_print_grpc_persistent_list();
   zval *creds_obj = NULL;
   char *target;
   php_grpc_int target_length;
@@ -311,7 +415,7 @@ PHP_METHOD(Channel, __construct) {
     // object, there is no way we can tell them apart. Do NOT persist
     // them. They should be individually destroyed.
     create_channel(channel, target, args, creds);
-  } else if (!(PHP_GRPC_PERSISTENT_LIST_FIND(&EG(persistent_list), key,
+  } else if (!(PHP_GRPC_PERSISTENT_LIST_FIND(&grpc_persistent_list, key,
                                              key_len, rsrc))) {
     create_and_add_channel_to_persistent_list(
         channel, target, args, creds, key, key_len TSRMLS_CC);
@@ -336,8 +440,10 @@ PHP_METHOD(Channel, __construct) {
       free(channel->wrapper->target);
       free(channel->wrapper->args_hashstr);
       free(channel->wrapper);
+      le->ref_count += 1;
       channel->wrapper = le->channel;
       channel->wrapper->ref_count += 1;
+      php_printf("ref_count +: %zu\n", le->ref_count);
     }
   }
 }
@@ -446,14 +552,19 @@ PHP_METHOD(Channel, watchConnectivityState) {
  */
 PHP_METHOD(Channel, close) {
   wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
-  bool is_last_wrapper = false;
   if (channel->wrapper != NULL) {
     // Channel_wrapper hasn't call close before.
     gpr_mu_lock(&channel->wrapper->mu);
     if (channel->wrapper->wrapped != NULL) {
-      if (channel->wrapper->is_valid) {
-        // Wrapped channel hasn't been destoryed by other wrapper.
+      php_printf("if (p->wrapper->wrapped != NULL)\n");
+      php_grpc_zend_resource *rsrc;
+      php_grpc_int key_len = strlen(channel->wrapper->key);
+      if (!(PHP_GRPC_PERSISTENT_LIST_FIND(&grpc_persistent_list, channel->wrapper->key,
+                                                  key_len, rsrc))) {
+        // If not in the persistent list, just delete it and all related allocation.
+        php_printf("PHP_GRPC_FREE_WRAPPED_FUNC_START not in the persistent list\n");
         grpc_channel_destroy(channel->wrapper->wrapped);
+        channel->wrapper->wrapped = NULL;
         free(channel->wrapper->target);
         free(channel->wrapper->args_hashstr);
         if(channel->wrapper->creds_hashstr != NULL){
@@ -461,31 +572,17 @@ PHP_METHOD(Channel, close) {
           channel->wrapper->creds_hashstr = NULL;
         }
         channel->wrapper->wrapped = NULL;
+        channel->wrapper = NULL;
+      } else {
+        // If in the persistent list, just delete it and all related allocation.
         channel->wrapper->is_valid = false;
-
-        php_grpc_delete_persistent_list_entry(channel->wrapper->key,
-                                              strlen(channel->wrapper->key)
-                                              TSRMLS_CC);
+        channel_persistent_le_t* le = (channel_persistent_le_t *)rsrc->ptr;
+        le->ref_count -= 1;
+        php_printf("ref_count -: %zu\n", le->ref_count);
       }
-    }
-    channel->wrapper->ref_count -= 1;
-    if(channel->wrapper->ref_count == 0){
-      // Mark that the wrapper can be freed because mu should be
-      // destroyed outside the lock.
-      is_last_wrapper = true;
     }
     gpr_mu_unlock(&channel->wrapper->mu);
   }
-  gpr_mu_lock(&global_persistent_list_mu);
-  if (is_last_wrapper) {
-    gpr_mu_destroy(&channel->wrapper->mu);
-    free(channel->wrapper->key);
-    free(channel->wrapper);
-  }
-  // Set channel->wrapper to NULL to avoid call close twice for the same
-  // channel.
-  channel->wrapper = NULL;
-  gpr_mu_unlock(&global_persistent_list_mu);
 }
 
 // Delete an entry from the persistent list
@@ -494,12 +591,12 @@ void php_grpc_delete_persistent_list_entry(char *key, php_grpc_int key_len
                                            TSRMLS_DC) {
   php_grpc_zend_resource *rsrc;
   gpr_mu_lock(&global_persistent_list_mu);
-  if (PHP_GRPC_PERSISTENT_LIST_FIND(&EG(persistent_list), key,
+  if (PHP_GRPC_PERSISTENT_LIST_FIND(&grpc_persistent_list, key,
                                     key_len, rsrc)) {
     channel_persistent_le_t *le;
     le = (channel_persistent_le_t *)rsrc->ptr;
     le->channel = NULL;
-    php_grpc_zend_hash_del(&EG(persistent_list), key, key_len+1);
+    php_grpc_zend_hash_del(&grpc_persistent_list, key, key_len+1);
     free(le);
   }
   gpr_mu_unlock(&global_persistent_list_mu);
@@ -508,25 +605,30 @@ void php_grpc_delete_persistent_list_entry(char *key, php_grpc_int key_len
 // A destructor associated with each list entry from the persistent list
 static void php_grpc_channel_plink_dtor(php_grpc_zend_resource *rsrc
                                         TSRMLS_DC) {
+  php_printf("php_grpc_channel_plink_dtor\n");
   channel_persistent_le_t *le = (channel_persistent_le_t *)rsrc->ptr;
+  if(le == NULL) {
+    return;
+  }
   if (le->channel != NULL) {
     gpr_mu_lock(&le->channel->mu);
+
     if (le->channel->wrapped != NULL) {
       grpc_channel_destroy(le->channel->wrapped);
-      free(le->channel->target);
       free(le->channel->args_hashstr);
       le->channel->wrapped = NULL;
       le->channel->target = NULL;
       le->channel->args_hashstr = NULL;
+      free(le->channel->key);
+      le->channel->key = NULL;
     }
-    free(le->channel->key);
-    le->channel->key = NULL;
     gpr_mu_unlock(&le->channel->mu);
+    gpr_mu_lock(&global_persistent_list_mu);
     gpr_mu_destroy(&le->channel->mu);
     free(le->channel);
     le->channel = NULL;
     free(le);
-    le = NULL;
+    gpr_mu_unlock(&global_persistent_list_mu);
   }
 }
 
@@ -572,6 +674,8 @@ GRPC_STARTUP_FUNCTION(channel) {
   gpr_mu_init(&global_persistent_list_mu);
   le_plink = zend_register_list_destructors_ex(
       NULL, php_grpc_channel_plink_dtor, "Persistent Channel", module_number);
+  zend_hash_init_ex(&grpc_persistent_list, 2, NULL,
+                    EG(persistent_list).pDestructor, 1, 0);
   PHP_GRPC_INIT_HANDLER(wrapped_grpc_channel, channel_ce_handlers);
   return SUCCESS;
 }

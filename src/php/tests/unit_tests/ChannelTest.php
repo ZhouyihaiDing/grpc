@@ -237,6 +237,48 @@ class ChannelTest extends PHPUnit_Framework_TestCase
         $this->channel2->close();
     }
 
+    public function testPersistentChannelMultipleDifferentHost()
+    {
+        // two different underlying channels because different hostname
+        $this->channel1 = new Grpc\Channel('localhost:1', []);
+        $this->channel2 = new Grpc\Channel('localhost:2', []);
+        echo "end point 1\n";
+
+        echo "end point 2\n";
+        $this->channel3 = new Grpc\Channel('localhost:3', []);
+        $state = $this->channel3->getConnectivityState(true);
+        $this->waitUntilNotIdle($this->channel3);
+        $this->channel4 = new Grpc\Channel('localhost:4', []);
+        $this->channel5 = new Grpc\Channel('localhost:5', []);
+        $this->channel6 = new Grpc\Channel('localhost:6', []);
+
+        $this->channel1->close();
+        $this->channel2->close();
+        $this->channel4->close();
+        $this->channel5->close();
+    }
+
+  public function testPersistentChannelMultipleSameHost()
+  {
+    // two different underlying channels because different hostname
+    $this->channel1 = new Grpc\Channel('localhost:1', []);
+    $this->channel2 = new Grpc\Channel('localhost:1', []);
+    echo "end point 1\n";
+
+    echo "end point 2\n";
+    $this->channel3 = new Grpc\Channel('localhost:1', []);
+    $state = $this->channel3->getConnectivityState(true);
+    $this->waitUntilNotIdle($this->channel3);
+    $this->channel4 = new Grpc\Channel('localhost:1', []);
+    $this->channel5 = new Grpc\Channel('localhost:1', []);
+    $this->channel6 = new Grpc\Channel('localhost:1', []);
+
+    $this->channel1->close();
+    $this->channel2->close();
+    $this->channel4->close();
+    $this->channel5->close();
+  }
+
     public function testPersistentChannelSameArgs()
     {
         $this->channel1 = new Grpc\Channel('localhost:1', ["abc" => "def"]);

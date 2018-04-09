@@ -36,7 +36,7 @@
 
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
-
+HashTable grpc_persistent_list;
 /* {{{ grpc_functions[]
  *
  * Every user visible function must have an entry in grpc_functions[].
@@ -227,6 +227,8 @@ PHP_MINIT_FUNCTION(grpc) {
   grpc_init_channel_credentials(TSRMLS_C);
   grpc_init_call_credentials(TSRMLS_C);
   grpc_init_server_credentials(TSRMLS_C);
+  // zend_hash_init_ex(&grpc_persistent_list, 8, NULL, plist_entry_destructor, 1, 0);
+  //_zend_hash_init()
   return SUCCESS;
 }
 /* }}} */
@@ -240,6 +242,8 @@ PHP_MSHUTDOWN_FUNCTION(grpc) {
   // WARNING: This function IS being called by PHP when the extension
   // is unloaded but the logs were somehow suppressed.
   if (GRPC_G(initialized)) {
+    zend_hash_clean(&grpc_persistent_list);
+    zend_hash_destroy(&grpc_persistent_list);
     grpc_shutdown_timeval(TSRMLS_C);
     grpc_php_shutdown_completion_queue(TSRMLS_C);
     grpc_shutdown();
@@ -256,7 +260,6 @@ PHP_MINFO_FUNCTION(grpc) {
   php_info_print_table_row(2, "grpc support", "enabled");
   php_info_print_table_row(2, "grpc module version", PHP_GRPC_VERSION);
   php_info_print_table_end();
-
   /* Remove comments if you have entries in php.ini
      DISPLAY_INI_ENTRIES();
   */

@@ -88,6 +88,9 @@
                                          0, NULL); \
     data = *tmp##key;
 
+#define PHP_GRPC_HASH_VALPTR_TO_VAL(data) \
+  &data;
+
 #define PHP_GRPC_HASH_FOREACH_LONG_KEY_VAL_START(ht, key, key_type, index,\
                                                  data) \
   zval **tmp##key = NULL; \
@@ -192,6 +195,9 @@ static inline int php_grpc_zend_hash_find(HashTable *ht, char *key, int len,
   ZEND_HASH_FOREACH_STR_KEY_VAL(ht, (zs_##key), data) { \
     if ((zs_##key) == NULL) {key = NULL; key_type = HASH_KEY_IS_LONG;} \
     else {key = (zs_##key)->val; key_type = HASH_KEY_IS_STRING;}
+
+#define PHP_GRPC_HASH_VALPTR_TO_VAL(data) \
+  Z_PTR_P(data);
 
 #define PHP_GRPC_HASH_FOREACH_LONG_KEY_VAL_START(ht, key, key_type, index, \
                                                  data) \
