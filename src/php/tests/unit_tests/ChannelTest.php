@@ -21,6 +21,9 @@ class ChannelTest extends PHPUnit_Framework_TestCase
 {
     public function setUp()
     {
+      $channel_upper_bound = new Grpc\Channel('localhost:1', [
+        "persistent_list_max_size" => 1000,
+      ]);
     }
 
     public function tearDown()

@@ -273,7 +273,7 @@ PHP_METHOD(Call, startBatch) {
   wrapped_grpc_call *call = Z_WRAPPED_GRPC_CALL_P(getThis());
   if (call->channel) {
     // startBatch in gRPC PHP server doesn't have channel in it.
-    if(!call->channel->is_valid) {
+    if (!call->channel->is_valid) {
       zend_throw_exception(spl_ce_RuntimeException,
                            "startBatch Error. Channel is closed",
                            1 TSRMLS_CC);
