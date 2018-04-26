@@ -624,11 +624,110 @@ static zend_function_entry channel_methods[] = {
          ZEND_ACC_PUBLIC)
   PHP_FE_END
 };
+static int my_serialize(zval *object, unsigned char **buffer, size_t *buf_len, zend_serialize_data *data)
+{
+  wrapped_grpc_channel* channel = (wrapped_grpc_channel*)Z_WRAPPED_GRPC_CHANNEL_P(object);
+  // change address to string
+  char channel_wrapper_address[256];
+  sprintf(channel_wrapper_address, "%lld,%zu", channel->wrapper, getpid());
+
+  smart_str buf = {0};
+  zval zv;
+  php_serialize_data_t serialize_data;
+  PHP_VAR_SERIALIZE_INIT(serialize_data);
+
+  zend_string *str;
+  str = zend_string_init(channel_wrapper_address, strlen(channel_wrapper_address), 0);
+  ZVAL_NEW_STR(&zv, str);
+  php_var_serialize(&buf, &zv, &serialize_data);
+  zval_dtor(&zv);
+
+  PHP_VAR_SERIALIZE_DESTROY(serialize_data);
+  *buffer = (unsigned char *) estrndup(ZSTR_VAL(buf.s), ZSTR_LEN(buf.s));
+  *buf_len = ZSTR_LEN(buf.s);
+  zend_string_release(buf.s);
+
+  return SUCCESS;
+}
+
+static int my_unserialize(zval *object, zend_class_entry *ce, const unsigned char *buf, size_t buf_len, zend_unserialize_data *data)
+{
+  const unsigned char *p, *max;
+  zval *zv;
+  php_unserialize_data_t unserialize_data;
+
+  p = buf;
+  max = buf + buf_len;
+  PHP_VAR_UNSERIALIZE_INIT(unserialize_data);
+  zv = var_tmp_var(&unserialize_data);
+  php_var_unserialize(zv, &p, max, &unserialize_data);
+
+  int start = 0, end = 0;
+  int len = strlen((char*)buf);
+  // get the address of the grpc_channel_wrapper
+  while(start < len) {
+    if(buf[start] == '\"') {
+      start++;
+      end = start;
+      break;
+    }
+    start++;
+  }
+  while(end < len) {
+    if(buf[end] == ',') {
+      break;
+    }
+    end++;
+  }
+  char channel_wrapper_address[20];
+  memcpy( channel_wrapper_address, &buf[start], end-start);
+  channel_wrapper_address[end-start] = '\0';
+  // get which process is this channel created.
+  char channel_process_id[20];
+  start =  end + 1;
+  while(end < len) {
+    if(buf[end] == '\"') {
+      break;
+    }
+    end++;
+  }
+  memcpy( channel_process_id, &buf[start], end-start);
+  channel_process_id[end-start] = '\0';
+
+  wrapped_grpc_channel *intern = emalloc(sizeof(wrapped_grpc_channel) +
+                                         zend_object_properties_size(grpc_ce_channel));
+  memset(intern, 0, sizeof(wrapped_grpc_channel));
+  zend_object_std_init(&intern->std, grpc_ce_channel);
+  object_properties_init(&intern->std, grpc_ce_channel);
+  intern->std.handlers = &channel_ce_handlers;
+
+
+  long long i;
+  i = atoll(channel_wrapper_address);
+  pid_t channel_pid = (pid_t) atoi(channel_process_id);
+  if(channel_pid != getpid()) {
+    php_printf("not the same pid\n");
+    intern->wrapper = NULL;
+    // ZVAL_OBJ(object, &intern->std);
+    return SUCCESS;
+  }
+  grpc_channel_wrapper *wrapper = (grpc_channel_wrapper *)i;
+  wrapper->ref_count += 1;
+
+  intern->wrapper = wrapper;
+  ZVAL_OBJ(object, &intern->std);
+
+  wrapped_grpc_channel* channel = (wrapped_grpc_channel*)Z_WRAPPED_GRPC_CHANNEL_P(object);
+  channel->wrapper = wrapper;
+  return SUCCESS;
+}
 
 GRPC_STARTUP_FUNCTION(channel) {
   zend_class_entry ce;
   INIT_CLASS_ENTRY(ce, "Grpc\\Channel", channel_methods);
   ce.create_object = create_wrapped_grpc_channel;
+  ce.serialize = grpc_channel_serialize;
+  ce.unserialize = grpc_channel_unserialize;
   grpc_ce_channel = zend_register_internal_class(&ce TSRMLS_CC);
   gpr_mu_init(&global_persistent_list_mu);
   le_plink = zend_register_list_destructors_ex(
