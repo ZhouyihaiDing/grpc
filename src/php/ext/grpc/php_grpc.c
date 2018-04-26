@@ -36,6 +36,7 @@
 
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
+int* persistet_list_upper_bound = NULL;
 HashTable grpc_persistent_list;
 /* {{{ grpc_functions[]
  *
