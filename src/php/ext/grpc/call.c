@@ -33,6 +33,7 @@ zend_class_entry *grpc_ce_call;
 #if PHP_MAJOR_VERSION >= 7
 static zend_object_handlers call_ce_handlers;
 #endif
+extern int grpc_gcp_extension;
 
 /* Frees and destroys an instance of wrapped_grpc_call */
 PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_call)
@@ -215,7 +216,13 @@ PHP_METHOD(Call, __construct) {
                          "an optional String", 1 TSRMLS_CC);
     return;
   }
-  wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
+  wrapped_grpc_channel *channel;
+  int* ref_count;
+  if (grpc_gcp_extension) {
+    pre_process(channel_ext, &channel, &ref_count, method);
+  } else {
+    channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
+  }
   gpr_mu_lock(&channel->wrapper->mu);
   if (channel->wrapper == NULL || channel->wrapper->wrapped == NULL) {
     zend_throw_exception(spl_ce_InvalidArgumentException,
@@ -426,6 +433,9 @@ PHP_METHOD(Call, startBatch) {
     case GRPC_OP_RECV_CLOSE_ON_SERVER:
       ops[op_num].data.recv_close_on_server.cancelled = &cancelled;
       break;
+    case OP_RUN_POST_PROCESS:
+      post_process(channel_ext, &channel, &ref_count, call->method);
+    break;
     default:
       zend_throw_exception(spl_ce_InvalidArgumentException,
                            "Unrecognized key in batch", 1 TSRMLS_CC);

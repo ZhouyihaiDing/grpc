@@ -67,6 +67,9 @@ class UnaryCall extends AbstractCall
         }
         $status = $event->status;
         $this->trailing_metadata = $status->metadata;
+        $this->call->startBatch([
+          OP_RUN_POST_PROCESS => true,
+        ]);
 
         return [$this->_deserializeResponse($event->message), $status];
     }
