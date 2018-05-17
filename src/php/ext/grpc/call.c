@@ -33,6 +33,9 @@ zend_class_entry *grpc_ce_call;
 #if PHP_MAJOR_VERSION >= 7
 static zend_object_handlers call_ce_handlers;
 #endif
+extern HashTable grpc_gcp_config;
+extern int grpc_gcp_extension;
+extern grpc_extension_channel* channel_ext;
 
 /* Frees and destroys an instance of wrapped_grpc_call */
 PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_call)
@@ -215,7 +218,13 @@ PHP_METHOD(Call, __construct) {
                          "an optional String", 1 TSRMLS_CC);
     return;
   }
-  wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
+  wrapped_grpc_channel *channel;
+  int* ref_count;
+  if (grpc_gcp_extension) {
+    pre_process(channel_ext, &channel, &ref_count, method);
+  } else {
+    channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
+  }
   gpr_mu_lock(&channel->wrapper->mu);
   if (channel->wrapper == NULL || channel->wrapper->wrapped == NULL) {
     zend_throw_exception(spl_ce_InvalidArgumentException,
@@ -426,6 +435,11 @@ PHP_METHOD(Call, startBatch) {
     case GRPC_OP_RECV_CLOSE_ON_SERVER:
       ops[op_num].data.recv_close_on_server.cancelled = &cancelled;
       break;
+    case GRPC_OP_RUN_POST_PROCESS:
+      if (grpc_gcp_extension) {
+        post_process(channel_ext, &channel, &ref_count, call->method);
+      }
+    break;
     default:
       zend_throw_exception(spl_ce_InvalidArgumentException,
                            "Unrecognized key in batch", 1 TSRMLS_CC);
@@ -444,6 +458,27 @@ PHP_METHOD(Call, startBatch) {
   }
   grpc_completion_queue_pluck(completion_queue, call->wrapped,
                               gpr_inf_future(GPR_CLOCK_REALTIME), NULL);
+  if(result->buf_recv == NULL) {
+    if(is_server_streaming) {
+      // For the PHP server_streaming call, it doesn't pass the `OP_RECV_STATUS_ON_CLIENT` by default:
+      // https://github.com/grpc/grpc/blob/106d175c8c4e038960a9f3304fdfe36450fdf784/src/php/lib/Grpc/ServerStreamingCall.php#L78
+      // Only when the user call the `getStatus` function, I can check the call status...
+
+      // Since the last response received must be an nullptr, it can be used to
+      // the stream ends or not.
+      // I need to call the startBatch to fetch the status before the user call getStatus,
+      // and save it in case the user call it later.
+
+      ops_from_extension[0].data.recv_status_on_client.trailing_metadata = &recv_trailing_metadata_global;
+      ops_from_extension[0].data.recv_status_on_client.status = &status_global;
+      ops_from_extension[0].data.recv_status_on_client.status_details = &recv_status_details_global;
+      error = grpc_call_start_batch(call->wrapped, ops_tmp, 1, call->wrapped,
+                                    NULL);
+      grpc_completion_queue_pluck(completion_queue, call->wrapped,
+                                  gpr_inf_future(GPR_CLOCK_REALTIME), NULL);
+    }
+    run_post_process();
+  }
 #if PHP_MAJOR_VERSION >= 7
   zval *recv_md;
 #endif

@@ -44,6 +44,9 @@ int le_plink;
 int le_bound;
 extern HashTable grpc_persistent_list;
 extern HashTable grpc_target_upper_bound_map;
+extern HashTable grpc_gcp_config;
+extern int grpc_gcp_extension;
+extern grpc_extension_channel* channel_ext;
 
 void free_grpc_channel_wrapper(grpc_channel_wrapper* channel, bool free_channel) {
   if (free_channel) {
@@ -298,6 +301,14 @@ void create_and_add_channel_to_persistent_list(
  */
 PHP_METHOD(Channel, __construct) {
   wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
+  if (grpc_gcp_extension) {
+    if(channel_ext) {
+      return;
+    }
+    channel_ext = malloc(sizeof(grpc_extension_channel));
+    set_channel_ext_by_config(&channel_ext, grpc_gcp_config);
+    return;
+  }
   zval *creds_obj = NULL;
   char *target;
   php_grpc_int target_length;
@@ -440,7 +451,12 @@ PHP_METHOD(Channel, __construct) {
  * @return string The URI of the endpoint
  */
 PHP_METHOD(Channel, getTarget) {
-  wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
+  wrapped_grpc_channel *channel = NULL;
+  if (grpc_gcp_extension) {
+    channel = get_channel_from_ext(&channel_ext);
+  } else {
+    channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
+  }
   if (channel->wrapper == NULL) {
     zend_throw_exception(spl_ce_RuntimeException,
                          "getTarget error."

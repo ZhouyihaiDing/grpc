@@ -31,12 +31,36 @@ ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
 HashTable grpc_persistent_list;
 HashTable grpc_target_upper_bound_map;
+HashTable grpc_gcp_config;
+int grpc_gcp_extension;
+grpc_extension_channel* channel_ext;
 /* {{{ grpc_functions[]
  *
  * Every user visible function must have an entry in grpc_functions[].
  */
+// Todo: This method will be moved to another extension, which can set the
+// flag `grpc_gcp_extension` inside this extension.
+PHP_FUNCTION(enable_grpc_gcp) {
+  grpc_gcp_extension = 1;
+  php_printf("grpc_gcp_extension %d\n", grpc_gcp_extension);
+  /* "a" == 1 array */
+  zval *config = NULL;
+  if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "a", &config)
+      == FAILURE) {
+    zend_throw_exception(spl_ce_InvalidArgumentException,
+                         "enable_grpc_gcp expects an array of config", 1 TSRMLS_CC);
+    return;
+  }
+  grpc_gcp_config *config_hash = Z_ARRVAL_P(args_array);
+}
+
+ZEND_BEGIN_ARG_INFO_EX(arginfo_enable_grpc_gcp, 0, 0, 0)
+  ZEND_ARG_INFO(0, try_to_connect)
+ZEND_END_ARG_INFO()
+
 const zend_function_entry grpc_functions[] = {
-    PHP_FE_END /* Must be the last line in grpc_functions[] */
+  PHP_FE(enable_grpc_gcp, arginfo_enable_grpc_gcp)
+  PHP_FE_END /* Must be the last line in grpc_functions[] */
 };
 /* }}} */
 
@@ -196,6 +220,9 @@ PHP_MINIT_FUNCTION(grpc) {
   REGISTER_LONG_CONSTANT("Grpc\\OP_RECV_CLOSE_ON_SERVER",
                          GRPC_OP_RECV_CLOSE_ON_SERVER,
                          CONST_CS | CONST_PERSISTENT);
+  REGISTER_LONG_CONSTANT("Grpc\\OP_RUN_POST_PROCESS",
+                         GRPC_OP_RUN_POST_PROCESS,
+                         CONST_CS | CONST_PERSISTENT);
 
   /* Register connectivity state constants */
   REGISTER_LONG_CONSTANT("Grpc\\CHANNEL_IDLE",
@@ -221,9 +248,11 @@ PHP_MINIT_FUNCTION(grpc) {
   grpc_init_channel_credentials(TSRMLS_C);
   grpc_init_call_credentials(TSRMLS_C);
   grpc_init_server_credentials(TSRMLS_C);
+  grpc_gcp_extension = false;
   return SUCCESS;
 }
 /* }}} */
+
 
 /* {{{ PHP_MSHUTDOWN_FUNCTION
  */
