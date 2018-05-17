@@ -31,6 +31,7 @@ PHP_GRPC_WRAP_OBJECT_START(wrapped_grpc_call)
   bool owned;
   grpc_call *wrapped;
   wrapped_grpc_channel* channel;
+  char *method;
 PHP_GRPC_WRAP_OBJECT_END(wrapped_grpc_call)
 
 #if PHP_MAJOR_VERSION < 7

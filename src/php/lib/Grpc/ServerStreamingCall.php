@@ -67,6 +67,9 @@ class ServerStreamingCall extends AbstractCall
                 OP_RECV_MESSAGE => true,
             ])->message;
         }
+        $this->call->startBatch([
+          OP_RUN_POST_PROCESS => true,
+        ]);
     }
 
     /**

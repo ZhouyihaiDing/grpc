@@ -84,6 +84,9 @@ class BidiStreamingCall extends AbstractCall
         $this->call->startBatch([
             OP_SEND_CLOSE_FROM_CLIENT => true,
         ]);
+        $this->call->startBatch([
+          OP_RUN_POST_PROCESS => true,
+        ]);
     }
 
     /**
