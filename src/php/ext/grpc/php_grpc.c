@@ -20,6 +20,7 @@
 
 #include "call.h"
 #include "channel.h"
+#include "channel_ext.h"
 #include "server.h"
 #include "timeval.h"
 #include "channel_credentials.h"
@@ -27,12 +28,20 @@
 #include "server_credentials.h"
 #include "completion_queue.h"
 
+#include <ext/spl/spl_exceptions.h>
+#include <zend_exceptions.h>
+
 ZEND_DECLARE_MODULE_GLOBALS(grpc)
 static PHP_GINIT_FUNCTION(grpc);
 HashTable grpc_persistent_list;
 HashTable grpc_target_upper_bound_map;
-HashTable grpc_gcp_config;
+
+// Extension for cloud
 int grpc_gcp_extension;
+HashTable grpc_gcp_config;
+int channel_pool_size;
+
+
 grpc_extension_channel* channel_ext;
 /* {{{ grpc_functions[]
  *
@@ -41,17 +50,83 @@ grpc_extension_channel* channel_ext;
 // Todo: This method will be moved to another extension, which can set the
 // flag `grpc_gcp_extension` inside this extension.
 PHP_FUNCTION(enable_grpc_gcp) {
+  if (grpc_gcp_extension) {
+    // Only read config once. In PHP-FPM, the same script with `enable_grpc_gcp`
+    // function may run multiple times.
+    // It is time consuming to parse config in every scripts.
+    return;
+  }
   grpc_gcp_extension = 1;
+  zend_hash_init_ex(&grpc_gcp_config, 20, NULL,
+                    EG(persistent_list).pDestructor, 1, 0);
   php_printf("grpc_gcp_extension %d\n", grpc_gcp_extension);
   /* "a" == 1 array */
-  zval *config = NULL;
-  if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "a", &config)
+  zval *config_array = NULL;
+  if (zend_parse_parameters(ZEND_NUM_ARGS() TSRMLS_CC, "a", &config_array)
       == FAILURE) {
     zend_throw_exception(spl_ce_InvalidArgumentException,
                          "enable_grpc_gcp expects an array of config", 1 TSRMLS_CC);
     return;
   }
-  grpc_gcp_config *config_hash = Z_ARRVAL_P(args_array);
+  HashTable *grpc_gcp_config_hash = Z_ARRVAL_P(config_array);
+  char *key = NULL;
+  zval *data;
+  int key_type;
+  PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(grpc_gcp_config_hash, key, key_type, data)
+    if (key_type) {}
+    // api
+    zval *data2;
+    PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(Z_ARRVAL_P(data), key, key_type, data2)
+      // api: target
+      // channel_pool
+      if(strcmp(key, "channel_pool") == 0){
+        zval* pool_data;
+        PHP_GRPC_HASH_FOREACH_VAL_START(Z_ARRVAL_P(data2), pool_data)
+          channel_pool_size = atoi(Z_STRVAL_P(pool_data));
+        PHP_GRPC_HASH_FOREACH_END()
+      }
+      // method
+      if(strcmp(key, "method") == 0){
+      zval *data3;
+      PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(Z_ARRVAL_P(data2), key, key_type, data3)
+        zval *data4;
+        char* method_name = NULL;
+        char* command = NULL;
+        char* affinity_key = NULL;
+        PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(Z_ARRVAL_P(data3), key, key_type, data4)
+          if (strcmp(key, "name") == 0) {
+            char* name_read = Z_STRVAL_P(data4);
+            // TODO: it should have the allocation by it's own, otherwise it will
+            // be in valid under PHP-FPM mode.
+            method_name = malloc(strlen(name_read) + 1);
+            strcpy(method_name, name_read);
+          }
+          if (strcmp(key, "affinity") == 0) {
+            zval *affinity_val;
+            PHP_GRPC_HASH_FOREACH_STR_KEY_VAL_START(Z_ARRVAL_P(data4),
+                                                    key, key_type, affinity_val)
+              if (strcmp(key, "command") == 0) {
+                command = Z_STRVAL_P(affinity_val);
+              }
+              if (strcmp(key, "affinity_key") == 0) {
+                affinity_key = Z_STRVAL_P(affinity_val);
+              }
+              if (affinity_val) {}
+            PHP_GRPC_HASH_FOREACH_END()
+            affinity* aff = malloc(sizeof(affinity));
+            aff->command = command;
+            aff->affinity_key = affinity_key;
+            php_grpc_zend_resource new_rsrc;
+            new_rsrc.ptr = aff;
+            php_printf("%s: %s=>%s\n", method_name, command, affinity_key);
+            PHP_GRPC_PERSISTENT_LIST_UPDATE(&grpc_gcp_config,
+                method_name, strlen(method_name), (void *)&new_rsrc);
+          }
+        PHP_GRPC_HASH_FOREACH_END()
+      PHP_GRPC_HASH_FOREACH_END()
+      }
+    PHP_GRPC_HASH_FOREACH_END()
+  PHP_GRPC_HASH_FOREACH_END()
 }
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_enable_grpc_gcp, 0, 0, 0)
@@ -219,9 +294,6 @@ PHP_MINIT_FUNCTION(grpc) {
                          CONST_CS | CONST_PERSISTENT);
   REGISTER_LONG_CONSTANT("Grpc\\OP_RECV_CLOSE_ON_SERVER",
                          GRPC_OP_RECV_CLOSE_ON_SERVER,
-                         CONST_CS | CONST_PERSISTENT);
-  REGISTER_LONG_CONSTANT("Grpc\\OP_RUN_POST_PROCESS",
-                         GRPC_OP_RUN_POST_PROCESS,
                          CONST_CS | CONST_PERSISTENT);
 
   /* Register connectivity state constants */

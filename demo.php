@@ -77,5 +77,10 @@ var_dump($spanner_config);
 // Can't parse it in the C level.
 enable_grpc_gcp($spanner_config);
 
-$opts = ['credentials' => Grpc\ChannelCredentials::createInsecure(),
-  '_config' => $spanner_config];
+$channel = new Grpc\Channel('localhost:50000',
+            ['credentials' => Grpc\ChannelCredentials::createInsecure()]);
+//$opts = ['credentials' => Grpc\ChannelCredentials::createInsecure(),
+//  '_config' => $spanner_config];
+
+
+

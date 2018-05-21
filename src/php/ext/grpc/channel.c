@@ -306,7 +306,7 @@ PHP_METHOD(Channel, __construct) {
       return;
     }
     channel_ext = malloc(sizeof(grpc_extension_channel));
-    set_channel_ext_by_config(&channel_ext, grpc_gcp_config);
+    // set_channel_ext_by_config(&channel_ext, grpc_gcp_config);
     return;
   }
   zval *creds_obj = NULL;
@@ -452,8 +452,8 @@ PHP_METHOD(Channel, __construct) {
  */
 PHP_METHOD(Channel, getTarget) {
   wrapped_grpc_channel *channel = NULL;
-  if (grpc_gcp_extension) {
-    channel = get_channel_from_ext(&channel_ext);
+  if (grpc_gcp_extension && false) {
+    // channel = get_channel_from_ext(&channel_ext);
   } else {
     channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
   }
