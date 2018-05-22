@@ -34,6 +34,7 @@
 #include "completion_queue.h"
 #include "channel_credentials.h"
 #include "timeval.h"
+#include "ext_channel.h"
 
 zend_class_entry *grpc_ce_channel;
 #if PHP_MAJOR_VERSION >= 7
@@ -418,7 +419,7 @@ PHP_METHOD(Channel, __construct) {
 
   if (grpc_gcp_extension) {
     ext_channel = malloc(sizeof(grpc_gcp_channel));
-    grpc_gcp_channel_init(&ext_channel, target, args, creds);
+    grpc_gcp_channel_init(ext_channel, target, args_array, creds);
     // set_channel_ext_by_config(&channel_ext, grpc_gcp_config);
     return;
   }

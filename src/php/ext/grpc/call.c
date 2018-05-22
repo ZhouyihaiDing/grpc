@@ -28,6 +28,7 @@
 #include "timeval.h"
 #include "channel.h"
 #include "byte_buffer.h"
+#include "ext_channel.h"
 
 zend_class_entry *grpc_ce_call;
 #if PHP_MAJOR_VERSION >= 7
@@ -218,11 +219,11 @@ PHP_METHOD(Call, __construct) {
                          "an optional String", 1 TSRMLS_CC);
     return;
   }
-  wrapped_grpc_channel *channel;
+  wrapped_grpc_channel *channel = NULL;
   // int* ref_count;
   if (grpc_gcp_extension) {
     // pre_process(channel_ext, &channel, &ref_count, method);
-    channel = grpc_gcp_pre_process(method);
+    // channel = grpc_gcp_pre_process(method);
   } else {
     channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
   }

@@ -20,7 +20,6 @@
 #define NET_GRPC_PHP_GRPC_CHANNEL_H_
 
 #include "php_grpc.h"
-#include "ext_channel.h"
 
 /* Class entry for the PHP Channel class */
 extern zend_class_entry *grpc_ce_channel;

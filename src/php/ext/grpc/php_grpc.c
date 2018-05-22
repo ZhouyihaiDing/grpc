@@ -81,7 +81,7 @@ PHP_FUNCTION(enable_grpc_gcp) {
       if(strcmp(key, "channel_pool") == 0){
         zval* pool_data;
         PHP_GRPC_HASH_FOREACH_VAL_START(Z_ARRVAL_P(data2), pool_data)
-          channel_pool_size = atoi(Z_STRVAL_P(pool_data));
+          channel_pool_size = (int) atoi(Z_STRVAL_P(pool_data));
         PHP_GRPC_HASH_FOREACH_END()
       }
       // method
@@ -130,6 +130,18 @@ PHP_FUNCTION(enable_grpc_gcp) {
 
 PHP_FUNCTION(print_ext_channels) {
   php_printf("print_ext_channels\n");
+
+  // test bind function:
+  channel_ref* test_channel_ref = malloc(sizeof(channel_ref));
+  test_channel_ref->affinity_ref = 0;
+  test_channel_ref->active_stream_ref = 0;
+  if(test_channel_ref){}
+  grpc_gcp_unbind(ext_channel, "123");
+  grpc_gcp_bind(ext_channel, test_channel_ref, "123");
+  grpc_gcp_bind(ext_channel, test_channel_ref, "123");
+  grpc_gcp_unbind(ext_channel, "123");
+  grpc_gcp_get_channel_ref(ext_channel, "123");
+  grpc_gcp_get_channel_ref(ext_channel, "456");
 }
 
 ZEND_BEGIN_ARG_INFO_EX(arginfo_enable_grpc_gcp, 0, 0, 0)
