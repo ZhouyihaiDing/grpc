@@ -5,35 +5,41 @@
 
 #include "php_grpc.h"
 #include "channel.h"
+#include "channel_credentials.h"
 
-extern HashTable grpc_gcp_config;
-extern int channel_pool_size;
+typedef struct _channel_ref {
+  grpc_channel* channel;
+  int channel_id;
+  int affinity_ref;
+  int active_stream_ref;
+} channel_ref;
 
-typedef struct _grpc_extension_channel {
+
+typedef struct _grpc_gcp_channel {
+  // key => affinity_key, value => channel_ref
   HashTable wrapped_pool;
-  HashTable key;
-  HashTable target;
-  int _max_size;
-  int _max_concurrent_streams_low_watermark;
+  char* target;
+  int max_size;
+  int max_concurrent_streams_low_watermark;
   char* _target;
-  HashTable options;
-  char* _credentials;
+  grpc_channel_args options;
+  wrapped_grpc_channel_credentials* credentials;
   // A map of {method name: affinity config}
-  HashTable *affinity_by_method;
+  HashTable affinity_by_method;
   gpr_mu _lock;
   // A map of {affinity key: channel_ref_data}.
   HashTable channel_ref_by_affinity_key;
   // A map of managed channel refs.
   HashTable channel_refs;
   HashTable subscribers;
-} grpc_extension_channel;
+} grpc_gcp_channel;
 
 typedef struct _affinity {
   char* command;
   char* affinity_key;
 } affinity;
 
-void init_affinity_by_method_index(grpc_extension_channel *ext_channel,
+void init_affinity_by_method_index(grpc_gcp_channel *ext_channel,
                                    HashTable* config);
 //  zend_hash_init_ex(&(ext_channel->affinity_by_method), 20, NULL,
 //                    EG(persistent_list).pDestructor, 1, 0);
@@ -55,7 +61,13 @@ void init_affinity_by_method_index(grpc_extension_channel *ext_channel,
 //
 //void _unbind(){}
 //
-void pre_process();
-void run_post_process();
+void grpc_gcp_pre_process();
+void grpc_gcp_run_post_process();
+void grpc_gcp_channel_init();
+void grpc_gcp_bind(grpc_gcp_channel* channels, channel_ref* channel, char* affinity_key);
+
+void grpc_gcp_unbind(grpc_gcp_channel* channels, char* affinity_key);
+
+void grpc_gcp_get_channel_ref(grpc_gcp_channel* channels, char* affinity_key);
 
 #endif /* NET_GRPC_PHP_GRPC_CHANNEL_H_ */

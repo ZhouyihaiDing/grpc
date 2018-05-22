@@ -81,6 +81,7 @@ $channel = new Grpc\Channel('localhost:50000',
             ['credentials' => Grpc\ChannelCredentials::createInsecure()]);
 //$opts = ['credentials' => Grpc\ChannelCredentials::createInsecure(),
 //  '_config' => $spanner_config];
+print_ext_channels();
 
 
 

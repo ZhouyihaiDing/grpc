@@ -44,9 +44,11 @@ int le_plink;
 int le_bound;
 extern HashTable grpc_persistent_list;
 extern HashTable grpc_target_upper_bound_map;
+
+// Global variables for gcp extension
 extern HashTable grpc_gcp_config;
 extern int grpc_gcp_extension;
-extern grpc_extension_channel* channel_ext;
+extern grpc_gcp_channel* ext_channel;
 
 void free_grpc_channel_wrapper(grpc_channel_wrapper* channel, bool free_channel) {
   if (free_channel) {
@@ -302,12 +304,12 @@ void create_and_add_channel_to_persistent_list(
 PHP_METHOD(Channel, __construct) {
   wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(getThis());
   if (grpc_gcp_extension) {
-    if(channel_ext) {
+    if(ext_channel) {
+      // ext_channel has already been created.
+      // Constructing channel may be called under PHP-FPM mode, but
+      // Nothing need to be done here.
       return;
     }
-    channel_ext = malloc(sizeof(grpc_extension_channel));
-    // set_channel_ext_by_config(&channel_ext, grpc_gcp_config);
-    return;
   }
   zval *creds_obj = NULL;
   char *target;
@@ -413,6 +415,14 @@ PHP_METHOD(Channel, __construct) {
 
   gpr_mu_init(&channel->wrapper->mu);
   smart_str_free(&buf);
+
+  if (grpc_gcp_extension) {
+    ext_channel = malloc(sizeof(grpc_gcp_channel));
+    grpc_gcp_channel_init(&ext_channel, target, args, creds);
+    // set_channel_ext_by_config(&channel_ext, grpc_gcp_config);
+    return;
+  }
+
   if (force_new || (creds != NULL && creds->has_call_creds)) {
     // If the ChannelCredentials object was composed with a CallCredentials
     // object, there is no way we can tell them apart. Do NOT persist

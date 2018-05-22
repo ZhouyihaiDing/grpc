@@ -35,7 +35,7 @@ static zend_object_handlers call_ce_handlers;
 #endif
 extern HashTable grpc_gcp_config;
 extern int grpc_gcp_extension;
-extern grpc_extension_channel* channel_ext;
+extern grpc_gcp_channel* ext_channel;
 
 /* Frees and destroys an instance of wrapped_grpc_call */
 PHP_GRPC_FREE_WRAPPED_FUNC_START(wrapped_grpc_call)
@@ -220,8 +220,9 @@ PHP_METHOD(Call, __construct) {
   }
   wrapped_grpc_channel *channel;
   // int* ref_count;
-  if (grpc_gcp_extension && false) {
+  if (grpc_gcp_extension) {
     // pre_process(channel_ext, &channel, &ref_count, method);
+    channel = grpc_gcp_pre_process(method);
   } else {
     channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
   }

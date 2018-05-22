@@ -52,6 +52,9 @@ class ClientStreamingCall extends AbstractCall
         if (array_key_exists('flags', $options)) {
             $message_array['flags'] = $options['flags'];
         }
+        $this->call->startBatch([
+            OP_SEND_MESSAGE => $message_array,
+        ]);
     }
 
     /**
@@ -71,9 +74,7 @@ class ClientStreamingCall extends AbstractCall
 
         $status = $event->status;
         $this->trailing_metadata = $status->metadata;
-        $this->call->startBatch([
-          OP_RUN_POST_PROCESS => true,
-        ]);
+
         return [$this->_deserializeResponse($event->message), $status];
     }
 }

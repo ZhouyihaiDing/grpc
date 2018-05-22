@@ -20,7 +20,7 @@
 
 #include "call.h"
 #include "channel.h"
-#include "channel_ext.h"
+#include "ext_channel.h"
 #include "server.h"
 #include "timeval.h"
 #include "channel_credentials.h"
@@ -36,13 +36,12 @@ static PHP_GINIT_FUNCTION(grpc);
 HashTable grpc_persistent_list;
 HashTable grpc_target_upper_bound_map;
 
-// Extension for cloud
+// Global variables for gcp extension
 int grpc_gcp_extension;
 HashTable grpc_gcp_config;
 int channel_pool_size;
+grpc_gcp_channel* ext_channel;
 
-
-grpc_extension_channel* channel_ext;
 /* {{{ grpc_functions[]
  *
  * Every user visible function must have an entry in grpc_functions[].
@@ -129,11 +128,19 @@ PHP_FUNCTION(enable_grpc_gcp) {
   PHP_GRPC_HASH_FOREACH_END()
 }
 
+PHP_FUNCTION(print_ext_channels) {
+  php_printf("print_ext_channels\n");
+}
+
 ZEND_BEGIN_ARG_INFO_EX(arginfo_enable_grpc_gcp, 0, 0, 0)
   ZEND_ARG_INFO(0, try_to_connect)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_print_ext_channels, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
 const zend_function_entry grpc_functions[] = {
+  PHP_FE(print_ext_channels, arginfo_print_ext_channels)
   PHP_FE(enable_grpc_gcp, arginfo_enable_grpc_gcp)
   PHP_FE_END /* Must be the last line in grpc_functions[] */
 };

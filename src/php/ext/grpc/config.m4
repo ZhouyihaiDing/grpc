@@ -83,7 +83,7 @@ if test "$PHP_GRPC" != "no"; then
   PHP_SUBST(GRPC_SHARED_LIBADD)
 
   PHP_NEW_EXTENSION(grpc, byte_buffer.c call.c call_credentials.c channel.c \
-    channel_credentials.c completion_queue.c timeval.c server.c channel_ext.c\
+    channel_credentials.c completion_queue.c timeval.c server.c ext_channel.c\
     server_credentials.c php_grpc.c, $ext_shared, , -Wall -Werror -std=c11)
 fi
 
