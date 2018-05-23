@@ -61,7 +61,7 @@ channel_ref* grpc_gcp_bind(grpc_gcp_channel* channels, channel_ref* channel, cha
     cur_channel = channel;
     helper_print_channel_ref(new_rsrc.ptr);
   }
-//  cur_channel->active_stream_ref += 1;
+  cur_channel->active_stream_ref += 1;
   gpr_mu_unlock(&channels->mu);
   php_printf("----grpc_gcp_bind ends----\n");
   return cur_channel;
@@ -76,7 +76,7 @@ channel_ref* grpc_gcp_unbind(grpc_gcp_channel* channels, char* affinity_key) {
                                      affinity_key, strlen(affinity_key), rsrc_find))) {
     php_printf("find affinity_key: %s\n", affinity_key);
     cur_channel = (channel_ref*) rsrc_find->ptr;
-//    cur_channel->active_stream_ref -= 1;
+    cur_channel->active_stream_ref -= 1;
   }
   gpr_mu_unlock(&channels->mu);
   php_printf("----grpc_gcp_unbind ends----\n");
@@ -122,15 +122,17 @@ channel_ref* grpc_gcp_get_channel_ref(grpc_gcp_channel* channels, char* affinity
 
   if (num_ref_channels < channel_pool_size) {
     php_printf("!!! find channel has resources channel_pool_size\n");
-    zval* channel_id = NULL;
-    ZVAL_LONG(channel_id, num_ref_channels);
+    zval* channel_id = malloc(sizeof(zval));
+    ZVAL_LONG(channel_id, 10);
+    if (channel_id) {}
     #if PHP_MAJOR_VERSION < 7
     zend_hash_update(channels->options, "grpc_gcp.client_channel.id",
-                     sizeof("grpc_gcp.client_channel.id"), &channel_id,
+                     sizeof("grpc_gcp.client_channel.id") + 1, &channel_id,
                      sizeof(zval *), NULL);
     #else
     zend_string *name = zend_string_init("grpc_gcp.client_channel.id",
-                                         sizeof("grpc_gcp.client_channel.id"), 0);
+                                         sizeof("grpc_gcp.client_channel.id"), 1);
+    if (name) {}
     zend_hash_update(Z_ARRVAL_P(channels->options), name, channel_id);
     #endif
     grpc_channel_args args;
@@ -138,6 +140,8 @@ channel_ref* grpc_gcp_get_channel_ref(grpc_gcp_channel* channels, char* affinity
       efree(args.args);
       // TODO: throw exception
     }
+    php_printf("credentials hash: %s\n", channels->credentials->hashstr);
+    php_printf("target: %s\n", channels->target);
     grpc_channel* channel = grpc_secure_channel_create(channels->credentials->wrapped,
                                          channels->target, &args, NULL);
     cur_channel = malloc(sizeof(channel_ref));

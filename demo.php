@@ -76,9 +76,12 @@ var_dump($spanner_config);
 // because grpc extension doesn't have the class information about the protobuf.
 // Can't parse it in the C level.
 enable_grpc_gcp($spanner_config);
-
+echo "channel creating...\n";
+$creds = Grpc\ChannelCredentials::createSsl(
+  file_get_contents(dirname(__FILE__).'/src/php/tests/data/ca.pem'));
 $channel = new Grpc\Channel('localhost:50000',
-            ['credentials' => Grpc\ChannelCredentials::createInsecure()]);
+            ['credentials' => $creds]);
+echo "channel created\n";
 //$opts = ['credentials' => Grpc\ChannelCredentials::createInsecure(),
 //  '_config' => $spanner_config];
 print_ext_channels();
