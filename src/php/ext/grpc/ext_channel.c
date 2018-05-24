@@ -87,7 +87,7 @@ channel_ref* grpc_gcp_get_channel_ref(grpc_gcp_channel* channels, char* affinity
   php_printf("grpc_gcp_get_channel_ref\n");
   gpr_mu_lock(&channels->mu);
   channel_ref* cur_channel = NULL;
-  if (strcmp(affinity_key, "")) {
+  if (affinity_key != NULL && strcmp(affinity_key, "")) {
     // Has affinity_key
     php_grpc_zend_resource *rsrc_find;
     if ((PHP_GRPC_PERSISTENT_LIST_FIND(&channels->channel_ref_by_affinity_key,
@@ -123,7 +123,9 @@ channel_ref* grpc_gcp_get_channel_ref(grpc_gcp_channel* channels, char* affinity
   if (num_ref_channels < channel_pool_size) {
     php_printf("!!! find channel has resources channel_pool_size\n");
     zval* channel_id = malloc(sizeof(zval));
+    php_printf("1\n");
     ZVAL_LONG(channel_id, 10);
+    php_printf("2\n");
     if (channel_id) {}
     #if PHP_MAJOR_VERSION < 7
     zend_hash_update(channels->options, "grpc_gcp.client_channel.id",
@@ -131,10 +133,11 @@ channel_ref* grpc_gcp_get_channel_ref(grpc_gcp_channel* channels, char* affinity
                      sizeof(zval *), NULL);
     #else
     zend_string *name = zend_string_init("grpc_gcp.client_channel.id",
-                                         sizeof("grpc_gcp.client_channel.id"), 1);
+                                         sizeof("grpc_gcp.client_channel.id") + 1, 1);
     if (name) {}
-    zend_hash_update(Z_ARRVAL_P(channels->options), name, channel_id);
+    // zend_hash_update(Z_ARRVAL_P(channels->options), name, channel_id);
     #endif
+    php_printf("3\n");
     grpc_channel_args args;
     if (php_grpc_read_args_array(channels->options, &args TSRMLS_CC) == FAILURE) {
       efree(args.args);
@@ -150,5 +153,38 @@ channel_ref* grpc_gcp_get_channel_ref(grpc_gcp_channel* channels, char* affinity
   gpr_mu_unlock(&channels->mu);
   php_printf("----grpc_gcp_get_channel_ref ends----\n");
   return cur_channel;
+}
+
+/***
+* Pre-process the call by handling the channel management features before the
+* actual gRPC call.
+*
+* Includes:
+*   1. If channel affinity is desired, get a gRPC channel bound to the affinity key.
+*   2. If channel affinity is not desired, get a gRPC channel from the channel pool.
+*   3. Tracks the affinity ref count.
+*   4. Tracks the active stream ref count.
+*
+* Returns:
+*   tuple of channel, affinity_key.
+***/
+channel_ref* grpc_gcp_pre_process(grpc_gcp_channel* channels, char* method, affinity* aff) {
+  php_printf("grpc_gcp_pre_process method: %s\n", method);
+  channel_ref* ret_channel = NULL;
+  char* aff_key = NULL;
+  php_grpc_zend_resource *rsrc_find;
+  if ((PHP_GRPC_PERSISTENT_LIST_FIND(&channels->affinity_by_method,
+                                     method, strlen(method), rsrc_find))) {
+    aff = rsrc_find->ptr;
+    char* name = aff->affinity_key;
+    char* command = aff->command;
+    if (strcmp(command, "BOUND") == 0 || strcmp(command, "UNBIND") == 0) {
+      aff_key = name;
+    }
+    php_printf("find method %s with affinity key %s\n", method, aff_key);
+  }
+  ret_channel = grpc_gcp_get_channel_ref(channels, "789");
+  ret_channel->active_stream_ref += 1;
+  return ret_channel;
 }
 

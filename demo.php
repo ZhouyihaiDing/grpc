@@ -86,5 +86,10 @@ echo "channel created\n";
 //  '_config' => $spanner_config];
 print_ext_channels();
 
+$deadline = Grpc\Timeval::infFuture();
+$call = new Grpc\Call($channel,
+  '/google.spanner.v1.Spanner/CreateSession',
+  $deadline);
+
 
 

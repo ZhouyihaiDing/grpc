@@ -219,33 +219,39 @@ PHP_METHOD(Call, __construct) {
                          "an optional String", 1 TSRMLS_CC);
     return;
   }
-  wrapped_grpc_channel *channel = NULL;
-  // int* ref_count;
-  if (grpc_gcp_extension) {
-    // pre_process(channel_ext, &channel, &ref_count, method);
-    // channel = grpc_gcp_pre_process(method);
-  } else {
-    channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
-  }
+  wrapped_grpc_channel *channel = Z_WRAPPED_GRPC_CHANNEL_P(channel_obj);
   gpr_mu_lock(&channel->wrapper->mu);
-  if (channel->wrapper == NULL || channel->wrapper->wrapped == NULL) {
-    zend_throw_exception(spl_ce_InvalidArgumentException,
-                         "Call cannot be constructed from a closed Channel",
-                         1 TSRMLS_CC);
-    gpr_mu_unlock(&channel->wrapper->mu);
-    return;
-  }
+//  if (channel->wrapper == NULL || channel->wrapper->wrapped == NULL) {
+//    zend_throw_exception(spl_ce_InvalidArgumentException,
+//                         "Call cannot be constructed from a closed Channel",
+//                         1 TSRMLS_CC);
+//    gpr_mu_unlock(&channel->wrapper->mu);
+//    return;
+//  }
   add_property_zval(getThis(), "channel", channel_obj);
   wrapped_grpc_timeval *deadline = Z_WRAPPED_GRPC_TIMEVAL_P(deadline_obj);
   grpc_slice method_slice = grpc_slice_from_copied_string(method);
   grpc_slice host_slice = host_override != NULL ?
       grpc_slice_from_copied_string(host_override) : grpc_empty_slice();
-  call->wrapped =
-    grpc_channel_create_call(channel->wrapper->wrapped, NULL,
-                             GRPC_PROPAGATE_DEFAULTS,
-                             completion_queue, method_slice,
-                             host_override != NULL ? &host_slice : NULL,
-                             deadline->wrapped, NULL);
+  // int* ref_count;
+  grpc_channel* real_channel = NULL;
+  affinity* aff = NULL;
+  if (grpc_gcp_extension) {
+    channel_ref* channel_r =
+      grpc_gcp_pre_process(ext_channel, method, aff);
+//    php_printf("extension pre-process get channel. CHANNEL ID: %d\n",
+//               channel_r->channel_id);
+    real_channel = channel_r->channel;
+  } else {
+    real_channel = channel->wrapper->wrapped;
+  }
+  if(real_channel || deadline) {}
+//  call->wrapped =
+//    grpc_channel_create_call(real_channel, NULL,
+//                             GRPC_PROPAGATE_DEFAULTS,
+//                             completion_queue, method_slice,
+//                             host_override != NULL ? &host_slice : NULL,
+//                             deadline->wrapped, NULL);
   grpc_slice_unref(method_slice);
   grpc_slice_unref(host_slice);
   call->owned = true;

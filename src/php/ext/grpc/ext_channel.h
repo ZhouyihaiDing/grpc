@@ -43,12 +43,11 @@ typedef struct _affinity {
 void init_affinity_by_method_index(grpc_gcp_channel *ext_channel,
                                    HashTable* config);
 
-//void _get_channel_ref(){}
+void grpc_gcp_channel_init();
 
-wrapped_grpc_channel* grpc_gcp_pre_process(char* method);
+channel_ref* grpc_gcp_pre_process(grpc_gcp_channel* channels, char* method, affinity* aff);
 
 void grpc_gcp_run_post_process();
-void grpc_gcp_channel_init();
 
 channel_ref* grpc_gcp_bind(grpc_gcp_channel* channels, channel_ref* channel, char* affinity_key);
 
