@@ -60,7 +60,8 @@ class BaseStub
         }
         if ($channel) {
             if (!is_a($channel, 'Grpc\Channel') &&
-                !is_a($channel, 'Grpc\Internal\InterceptorChannel')) {
+                !is_a($channel, 'Grpc\Internal\InterceptorChannel') &&
+                !($channel instanceof CustomChannel)) {
                 throw new \Exception('The channel argument is not a Channel object '.
                     'or an InterceptorChannel object created by '.
                     'Interceptor::intercept($channel, Interceptor|Interceptor[] $interceptors)');
@@ -541,8 +542,13 @@ class BaseStub
         array $metadata = [],
         array $options = []
     ) {
-        $call_factory = $this->_UnaryStreamCallFactory($this->channel, $deserialize);
+        if (is_a($this->channel, 'Grpc\CustomChannel')) {
+          $call_factory = $this->channel->_UnaryStreamCallFactory();
+        } else {
+          $call_factory = $this->_UnaryStreamCallFactory($this->channel, $deserialize);
+        }
         $call = $call_factory($method, $argument, $metadata, $options);
+//        echo "class: ".($call)."\n";
         return $call;
     }
 
