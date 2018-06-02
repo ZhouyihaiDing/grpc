@@ -30,6 +30,5 @@ interface CustomChannel
 {
     // This function should be override
     public function _UnaryStreamCallFactory();
-
-
+    public function _UnaryUnaryCallFactory($deserialize);
 }

@@ -1,4 +1,5 @@
 <?php
+require_once(dirname(__FILE__).'/vendor/autoload.php');
 require_once(dirname(__FILE__).'/BaseStub.php');
 require_once(dirname(__FILE__).'/AbstractCall.php');
 require_once(dirname(__FILE__).'/UnaryCall.php');
@@ -13,6 +14,35 @@ require_once(dirname(__FILE__).'/generated/Grpc_gcp/ApiConfig.php');
 require_once(dirname(__FILE__).'/generated/Grpc_gcp/ChannelPoolConfig.php');
 require_once(dirname(__FILE__).'/generated/Grpc_gcp/MethodConfig.php');
 require_once(dirname(__FILE__).'/generated/GPBMetadata/GrpcGcp.php');
+
+use Google\Cloud\Spanner\V1\SpannerGrpcClient;
+use Google\Auth\ApplicationDefaultCredentials;
+use Google\Cloud\Spanner\V1\BeginTransactionRequest;
+use Google\Cloud\Spanner\V1\CommitRequest;
+use Google\Cloud\Spanner\V1\CommitResponse;
+use Google\Cloud\Spanner\V1\CreateSessionRequest;
+use Google\Cloud\Spanner\V1\DeleteSessionRequest;
+use Google\Cloud\Spanner\V1\ExecuteSqlRequest;
+use Google\Cloud\Spanner\V1\GetSessionRequest;
+use Google\Cloud\Spanner\V1\KeySet;
+use Google\Cloud\Spanner\V1\ListSessionsRequest;
+use Google\Cloud\Spanner\V1\ListSessionsResponse;
+use Google\Cloud\Spanner\V1\Mutation;
+use Google\Cloud\Spanner\V1\PartialResultSet;
+use Google\Cloud\Spanner\V1\PartitionOptions;
+use Google\Cloud\Spanner\V1\PartitionQueryRequest;
+use Google\Cloud\Spanner\V1\PartitionReadRequest;
+use Google\Cloud\Spanner\V1\PartitionResponse;
+use Google\Cloud\Spanner\V1\ReadRequest;
+use Google\Cloud\Spanner\V1\ResultSet;
+use Google\Cloud\Spanner\V1\RollbackRequest;
+use Google\Cloud\Spanner\V1\Session;
+use Google\Cloud\Spanner\V1\Transaction;
+use Google\Cloud\Spanner\V1\TransactionOptions;
+use Google\Cloud\Spanner\V1\TransactionSelector;
+use Google\Protobuf\GPBEmpty;
+use Google\Protobuf\Struct;
+
 //require_once(dirname(__FILE__).'/../../lib/Grpc/Internal/InterceptorChannel.php');
 
 $server = new \Grpc\Server([]);
@@ -162,13 +192,6 @@ class MyServerStreamCall
   }
 
   private function rpcPostProcess($status) {
-//    if(array_key_exists($method, $GLOBALS['affinity_by_method'])) {
-//      echo "postprocess find command\n";
-//      $command = $GLOBALS['affinity_by_method'][$method]['command'];
-//      if ($command == 'BIND') {
-//        $affinity_key = $GLOBALS['affinity_by_method'][$method]['affinityKey'];
-//      }
-//    }
     if ($GLOBALS['affinity_by_method'][$this->method]['command'] == 'BIND') {
       if($status->code != Grpc\STATUS_OK) {
         return;
@@ -183,6 +206,7 @@ class MyServerStreamCall
   public function start($data, array $metadata = [], array $options = []) {
     echo "real_call: ".get_class($this->real_call)."\n";
     echo "data: ".get_class($data)."\n";
+
     $this->real_call->start($data, $metadata, $options);
   }
 
@@ -196,8 +220,127 @@ class MyServerStreamCall
     $this->rpcPostProcess($status);
     return $status;
   }
+}
+
+class MyUnaryCall
+{
+  private $gcp_channel;
+  private $channel_ref;
+  private $affinity_key;
+  private $real_call;
+  private $response;
+  private $method;
+
+  public function __construct($gcp_channel, $method, $deserialize, $options) {
+    echo "construct MyStreamCall\n";
+    $this->gcp_channel = $gcp_channel;
+    $this->method = $method;
+    list($channel_ref, $affinity_key) = $this->rpcPreProcess($method);
+    $this->channel_ref = $channel_ref;
+    $this->affinity_key = $affinity_key;
+    $this->method = $method;
+    echo "method: ".$method."\n";
+    $this->real_call = new \Grpc\UnaryCall($channel_ref->getRealChannel(), $method, $deserialize, $options);
+    echo "call construct ends\n";
+  }
+
+  private function rpcPreProcess($method) {
+    $affinity_key = null;
+    if(array_key_exists($method, $GLOBALS['affinity_by_method'])) {
+      $command = $GLOBALS['affinity_by_method'][$method]['command'];
+      echo "preprocess find command: ". $command. "\n";
+      if ($command == 'BOUND' || $command == 'UNBIND') {
+        $affinity_key = $GLOBALS['affinity_by_method'][$method]['affinityKey'];
+        echo "preprocess find affinity_key: ". $affinity_key. "\n";
+      }
+    }
+    echo "preprocess find affinity_key: ". $affinity_key. "\n";
+    $channel_ref = $this->gcp_channel->getChannelRef($affinity_key);
+    $channel_ref->activeStreamRefIncr();
+    return [$channel_ref, $affinity_key];
+  }
+
+  private function rpcPostProcess($status) {
+    if ($GLOBALS['affinity_by_method'][$this->method]['command'] == 'BIND') {
+      if($status->code != Grpc\STATUS_OK) {
+        return;
+      }
+      $affinity_key = $GLOBALS['affinity_by_method'][$this->method]['affinityKey'];
+      $this->gcp_channel->_bind($this->channel_ref, $affinity_key);
+    } else if ($GLOBALS['affinity_by_method'][$this->method]['command'] == 'UNBIND') {
+      $this->gcp_channel->_unbind($this->affinity_key);
+    }
+  }
+
+  private function _get_jwt_aud_uri($method)
+  {
+    $last_slash_idx = strrpos($method, '/');
+    if ($last_slash_idx === false) {
+      throw new \InvalidArgumentException(
+        'service name must have a slash'
+      );
+    }
+    $service_name = substr($method, 0, $last_slash_idx);
+
+//    if ($this->hostname_override) {
+//      $hostname = $this->hostname_override;
+//    } else {
+      $hostname = $this->gcp_channel->getTarget();
+      echo "hostname: ". $hostname."\n";
+//    }
+
+    return 'https://'.$hostname.$service_name;
+  }
+  private function _validate_and_normalize_metadata($metadata)
+  {
+    $metadata_copy = [];
+    foreach ($metadata as $key => $value) {
+      if (!preg_match('/^[A-Za-z\d_-]+$/', $key)) {
+        throw new \InvalidArgumentException(
+          'Metadata keys must be nonempty strings containing only '.
+          'alphanumeric characters, hyphens and underscores'
+        );
+      }
+      $metadata_copy[strtolower($key)] = $value;
+    }
+
+    return $metadata_copy;
+  }
 
 
+  public function start($data, array $metadata = [], array $options = []) {
+    echo "real_call: ".get_class($this->real_call)."\n";
+    echo "data: ".get_class($data)."\n";
+    $jwt_aud_uri = $this->_get_jwt_aud_uri($this->method);
+    echo "jwt_aud_uri: ". $jwt_aud_uri. "\n";
+    if (is_callable($this->gcp_channel->update_metadata)) {
+      $metadata = call_user_func(
+        $this->gcp_channel->update_metadata,
+        $metadata,
+        $jwt_aud_uri
+      );
+    }
+    $metadata = $this->_validate_and_normalize_metadata(
+      $metadata
+    );
+    print_r($metadata);
+    $this->real_call->start($data, $metadata, $options);
+  }
+
+  public function wait() {
+    $response = $this->real_call->wait();
+    return $response;
+  }
+
+  public function getStatus() {
+    $status = $this->real_call->getStatus();
+    $this->rpcPostProcess($status);
+    return $status;
+  }
+
+  public function getMetadata() {
+    return $this->real_call->getMetadata();
+  }
 }
 
 class GrpcExtensionChannel implements Grpc\CustomChannel
@@ -210,12 +353,31 @@ class GrpcExtensionChannel implements Grpc\CustomChannel
     private $affinity_by_method = array(); // <= should be global.
     private $affinity_key_to_channel_ref = array();
     private $channel_refs = array();
+    public $update_metadata;
 
     public function __construct($hostname, $opts) {
       $this->max_size = 10;
       $this->max_concurrent_streams_low_watermark = 0;
       $this->target = $hostname;
-      $this->options = array();
+      if (isset($opts['update_metadata'])) {
+        if (is_callable($opts['update_metadata'])) {
+          $this->update_metadata = $opts['update_metadata'];
+        }
+        unset($opts['update_metadata']);
+      }
+      $package_config = json_decode(
+        file_get_contents(dirname(__FILE__).'/../../composer.json'),
+        true
+      );
+      if (!empty($cur_opts['grpc.primary_user_agent'])) {
+        $opts['grpc.primary_user_agent'] .= ' ';
+      } else {
+        $opts['grpc.primary_user_agent'] = '';
+      }
+      $opts['grpc.primary_user_agent'] .=
+        'grpc-php/'.$package_config['version'];
+      $this->options = $opts;
+      var_dump($opts);
 //      $this->credentials = null;
       $this->affinity_by_method = $GLOBALS['affinity_by_method'];
       $this->affinity_key_to_channel_ref = array();
@@ -229,6 +391,16 @@ class GrpcExtensionChannel implements Grpc\CustomChannel
             return new MyServerStreamCall($this, $method, $deserialize, $options);
         };
     }
+
+  public function _UnaryUnaryCallFactory($deserialize) {
+    echo "run _GetServerStreamCallFactory\n";
+    return function($method, $argument, $metadata, $options) use ($deserialize) {
+      echo "get _GetServerStreamCallFactory\n";
+      $call = new MyUnaryCall($this, $method, $deserialize, $options);
+      $call->start($argument, $metadata, $options);
+      return $call;
+    };
+  }
 
   public function _bind($channel_ref, $affinity_key)
   {
@@ -280,6 +452,7 @@ class GrpcExtensionChannel implements Grpc\CustomChannel
         $cur_opts = array_merge($this->options,
                                 ['grpc_gcp_channel_id' => $num_channel_refs,
                                   'grpc_target_persist_bound' => $this->max_size]);
+        var_dump($cur_opts);
         $channel = new \Grpc\Channel($this->target, $cur_opts);
         $channel_ref = new _ChannelRef($channel, $num_channel_refs);
         array_unshift($this->channel_refs, $channel_ref);
@@ -399,7 +572,8 @@ enable_grpc_gcp($conf);
 
 $hostname = 'localhost:'.$port;
 $opts = array();
-$channel = new GrpcExtensionChannel($hostname, $opts);
+//$channel = new GrpcExtensionChannel($hostname, $opts);
+/*
 $stub = new SimpleClient($hostname, $opts, $channel);
 $server_streaming_call = $stub->BindCall();
 
@@ -428,10 +602,60 @@ $server_streaming_call->getStatus();
 
 
 
-$server_streaming_call2 = $stub->BoundCall();
+//$server_streaming_call2 = $stub->BoundCall();
+$server_streaming_call2 = $stub->UnaryCall($req);
 $server_streaming_call2->start($req);
 $event = $server->requestCall();
 echo $event->method."\n";
 print_r($event->metadata);
+*/
+
+echo "create spenner client\n";
+$hostname = "spanner.googleapis.com";
+$credentials = \Grpc\ChannelCredentials::createSsl();
+$auth = ApplicationDefaultCredentials::getCredentials();
+$opts = [
+  'credentials' => $credentials,
+  'update_metadata' => $auth->getUpdateMetadataFunc(),
+];
+// projects/{project ID}/instances/{instance ID}/databases/{database name}
+$channel = new GrpcExtensionChannel($hostname, $opts);
+$database = 'projects/ddyihai-firestore/instances/test-instance/databases/test-database';
+$stub = new SpannerGrpcClient($host, $opts, $channel);
+
+
+
+
+
+$create_session_request = new CreateSessionRequest();
+$create_session_request->setDatabase($database);
+$create_session_call = $stub->CreateSession($create_session_request);
+list($session, $status) = $create_session_call->wait();
+var_dump($status);
+
+//$list_session_request = new ListSessionsRequest();
+//$list_session_request->setDatabase($database);
+//$session = $stub->ListSessions($list_session_request);
+//list($reply, $status) = $session->wait();
+//var_dump($status);
+//var_dump($reply->getSessions());
+//foreach ($reply->getSessions() as $session) {
+//  echo "session:\n";
+//  echo "name - ". $session->getName. PHP_EOL;
+//}
+
+$sql_cmd = "select LastName from Singers";
+$exec_sql_request = new ExecuteSqlRequest();
+$exec_sql_request->setSession($session->getName());
+$exec_sql_request->setSql($sql_cmd);
+$exec_sql_call = $stub->ExecuteSql($exec_sql_request);
+list($exec_sql_reply, $status) = $exec_sql_call->wait();
+var_dump($status);
+foreach ($exec_sql_reply->getRows() as $row) {
+  foreach($row->getValues() as $value) {
+    var_dump($value->getStringValue());
+  }
+}
+
 
 
