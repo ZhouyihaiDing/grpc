@@ -98,7 +98,7 @@ class BaseStub
                 'required. Please see one of the '.
                 'ChannelCredentials::create methods');
         }
-        print_r($opts);
+//        print_r($opts);
         return new Channel($hostname, $opts);
     }
 
@@ -247,7 +247,7 @@ class BaseStub
                 $options
             );
             $jwt_aud_uri = $this->_get_jwt_aud_uri($method);
-            echo "jwt_aud_uri: ". $jwt_aud_uri. "\n";
+            echo "$jwt_aud_uri\n";
             if (is_callable($this->update_metadata)) {
                 $metadata = call_user_func(
                     $this->update_metadata,
@@ -258,9 +258,6 @@ class BaseStub
             $metadata = $this->_validate_and_normalize_metadata(
                 $metadata
             );
-//          echo "metadata::::::::::: \n";
-          print_r($metadata);
-          print_r($options);
             $call->start($argument, $metadata, $options);
             return $call;
         };
@@ -296,8 +293,6 @@ class BaseStub
             $metadata = $this->_validate_and_normalize_metadata(
                 $metadata
             );
-            echo "$metadata::::::::::: \n";
-            print_r($metadata);
             $call->start($metadata);
             return $call;
         };
@@ -502,12 +497,7 @@ class BaseStub
         array $options = []
     ) {
       echo "_simpleRequest _simpleRequest _simpleRequest\n";
-      if (is_a($this->channel, 'Grpc\CustomChannel')) {
-        $call_factory = $this->channel->_UnaryUnaryCallFactory($deserialize);
-      } else {
         $call_factory = $this->_UnaryUnaryCallFactory($this->channel, $deserialize);
-      }
-//        $call_factory = $this->_UnaryUnaryCallFactory($this->channel, $deserialize);
         $call = $call_factory($method, $argument, $metadata, $options);
         return $call;
     }
@@ -555,13 +545,9 @@ class BaseStub
         array $metadata = [],
         array $options = []
     ) {
-        if (is_a($this->channel, 'Grpc\CustomChannel')) {
-          $call_factory = $this->channel->_UnaryStreamCallFactory();
-        } else {
-          $call_factory = $this->_UnaryStreamCallFactory($this->channel, $deserialize);
-        }
+      echo "unaryStream\n";
+        $call_factory = $this->_UnaryStreamCallFactory($this->channel, $deserialize);
         $call = $call_factory($method, $argument, $metadata, $options);
-//        echo "class: ".($call)."\n";
         return $call;
     }
 

@@ -32,6 +32,8 @@ abstract class AbstractCall
     protected $deserialize;
     protected $metadata;
     protected $trailing_metadata;
+    protected $method;
+    protected $channel;
 
     /**
      * Create a new Call wrapper object.
@@ -43,7 +45,7 @@ abstract class AbstractCall
      *                              the response
      * @param array    $options     Call options (optional)
      */
-    public function __construct(Channel $channel,
+    public function __construct($channel,
                                 $method,
                                 $deserialize,
                                 array $options = [])
@@ -57,7 +59,9 @@ abstract class AbstractCall
         } else {
             $deadline = Timeval::infFuture();
         }
-        $this->call = new Call($channel, $method, $deadline);
+        $this->method = $method;
+        $this->channel = $channel->_getChannel($method);
+        $this->call = new Call($this->channel->_getChannel(), $method, $deadline);
         $this->deserialize = $deserialize;
         $this->metadata = null;
         $this->trailing_metadata = null;
@@ -73,6 +77,22 @@ abstract class AbstractCall
     }
 
     /**
+     * @return Channel|GCPChannel the channel used to create this Call object.
+     */
+    public function _getChannel()
+    {
+        return $this->channel;
+    }
+    /**
+     * @return string RPC method.
+     */
+    public function _getMethod()
+    {
+      return $this->method;
+    }
+
+
+  /**
      * @return mixed The metadata sent by the server
      */
     public function getMetadata()

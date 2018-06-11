@@ -542,6 +542,15 @@ PHP_METHOD(Channel, close) {
   }
 }
 
+/**
+ * Close the channel
+ * @return void
+ */
+PHP_METHOD(Channel, _getChannel) {
+  zval *object = getThis();
+  RETVAL_ZVAL(object, 1, 0);
+}
+
 // Delete an entry from the persistent list
 // Note: this does not destroy or close the underlying grpc_channel
 void php_grpc_delete_persistent_list_entry(char *key, php_grpc_int key_len
@@ -715,6 +724,9 @@ ZEND_END_ARG_INFO()
 ZEND_BEGIN_ARG_INFO_EX(arginfo_close, 0, 0, 0)
 ZEND_END_ARG_INFO()
 
+ZEND_BEGIN_ARG_INFO_EX(arginfo_getChannel, 0, 0, 0)
+ZEND_END_ARG_INFO()
+
 #ifdef GRPC_PHP_DEBUG
 ZEND_BEGIN_ARG_INFO_EX(arginfo_getChannelInfo, 0, 0, 0)
 ZEND_END_ARG_INFO()
@@ -737,6 +749,8 @@ static zend_function_entry channel_methods[] = {
   PHP_ME(Channel, watchConnectivityState, arginfo_watchConnectivityState,
          ZEND_ACC_PUBLIC)
   PHP_ME(Channel, close, arginfo_close,
+         ZEND_ACC_PUBLIC)
+  PHP_ME(Channel, _getChannel, arginfo_getChannel,
          ZEND_ACC_PUBLIC)
   #ifdef GRPC_PHP_DEBUG
   PHP_ME(Channel, getChannelInfo, arginfo_getChannelInfo,
