@@ -10,6 +10,7 @@ require_once(dirname(__FILE__).'/ServerStreamingCall.php');
 require_once(dirname(__FILE__).'/Interceptor.php');
 require_once(dirname(__FILE__).'/Interceptor.php');
 require_once(dirname(__FILE__).'/Internal/InterceptorChannel.php');
+require_once(dirname(__FILE__).'/Internal/EmptyCall.php');
 require_once(dirname(__FILE__).'/GCPExtension.php');
 
 use Google\Cloud\Spanner\V1\SpannerGrpcClient;
@@ -66,14 +67,15 @@ function assertEqual($var1, $var2, $str = "") {
 }
 function assertStatusOk($status) {
   if ($status->code != \Grpc\STATUS_OK) {
-    throw new \Exception("gRPC status not OK: ".$statuc->code."\n");
+    throw new \Exception("gRPC status not OK: ".$status->code."\n");
   }
 }
 
-$_DEFAULT_MAX_CHANNELS_PER_TARGET = 4;
+$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
 
 // Test CreateSession Reuse Channel
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
+  echo "===================================================\n";
   $create_session_request = new CreateSessionRequest();
   $create_session_request->setDatabase($database);
   $create_session_call = $stub->CreateSession($create_session_request);
@@ -87,7 +89,8 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   assertEqual(1, count($gcp_channel->getNext()->getChannelRefs()));
 }
 
- Test CreateSession New Channel
+
+// Test CreateSession New Channel
 $rpc_calls = array();
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   $create_session_request = new CreateSessionRequest();
@@ -109,7 +112,7 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
   assertEqual($_DEFAULT_MAX_CHANNELS_PER_TARGET,
       count($gcp_channel->getNext()->getChannelRefs()));
 }
-print_r($gcp_channel->getNext()->getChannelRefs());
+
 
 $rpc_calls = array();
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
@@ -130,7 +133,9 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
   assertStatusOk($status);
 }
 
+print_r($gcp_channel->getNext()->getChannelRefs());
 
+/*
 // Test Create List Delete Session
 $create_session_request = new CreateSessionRequest();
 $create_session_request->setDatabase($database);
@@ -172,6 +177,7 @@ assertEqual(0, $gcp_channel->getNext()->getChannelRefs()[0]->getAffinityRef());
 assertEqual(0, $gcp_channel->getNext()->getChannelRefs()[0]->getActiveStreamRef());
 
 
+
 // Test eExecute Sql
 $create_session_request = new CreateSessionRequest();
 $create_session_request->setDatabase($database);
@@ -205,7 +211,9 @@ assertStatusOk($status);
 assertEqual(1, count($gcp_channel->getNext()->getChannelRefs()));
 assertEqual(0, $gcp_channel->getNext()->getChannelRefs()[0]->getAffinityRef());
 assertEqual(0, $gcp_channel->getNext()->getChannelRefs()[0]->getActiveStreamRef());
+*/
 
+/*
 // Test Execute Streaming Sql
 $create_session_request = new CreateSessionRequest();
 $create_session_request->setDatabase($database);
@@ -228,3 +236,5 @@ foreach ($features as $feature) {
     $i += 1;
   }
 }
+$status = $stream_exec_sql_call->getStatus();
+*/

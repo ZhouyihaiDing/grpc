@@ -32,8 +32,6 @@ abstract class AbstractCall
     protected $deserialize;
     protected $metadata;
     protected $trailing_metadata;
-    protected $method;
-    protected $channel;
 
     /**
      * Create a new Call wrapper object.
@@ -50,6 +48,23 @@ abstract class AbstractCall
                                 $deserialize,
                                 array $options = [])
     {
+        // Move the verification of Grpc\Channel from the parameter to here.
+        // It doesn't influence the performance when $channel is Grpc\Channel because
+        // it only checks once before and after the change.
+        // If $channel is not Grpc\Channel, not creating the Call object. Instead
+        // let EmptyCall saves all information needed for creating the Call object.
+        // By doing so, we can delay the creation of Call to other places like when
+        // RPC is sent.
+        if(!is_a($channel, 'Grpc\Channel')) {
+            if (is_a($channel, 'Grpc\GrpcExtensionChannel')) {
+              $this->call = new Internal\EmptyCall($channel, $method, $deserialize, $options);
+              return;
+            } else {
+              // To keep the original behavior, throw invalid argument exception.
+              throw new \InvalidArgumentException('Argument for creating the Call object '.
+               'should be Grpc\Channel object');
+            }
+        }
         if (array_key_exists('timeout', $options) &&
             is_numeric($timeout = $options['timeout'])
         ) {
@@ -59,9 +74,7 @@ abstract class AbstractCall
         } else {
             $deadline = Timeval::infFuture();
         }
-        $this->method = $method;
-        $this->channel = $channel->_getChannel($method);
-        $this->call = new Call($this->channel->_getChannel(), $method, $deadline);
+        $this->call = new Call($channel, $method, $deadline);
         $this->deserialize = $deserialize;
         $this->metadata = null;
         $this->trailing_metadata = null;
@@ -77,22 +90,15 @@ abstract class AbstractCall
     }
 
     /**
-     * @return Channel|GCPChannel the channel used to create this Call object.
+     * @return Call|EmptyCall This is only used to access the channel/arguments
+     * inside interceptor.
      */
-    public function _getChannel()
+    public function _getCall()
     {
-        return $this->channel;
+        return $this->call;
     }
+
     /**
-     * @return string RPC method.
-     */
-    public function _getMethod()
-    {
-      return $this->method;
-    }
-
-
-  /**
      * @return mixed The metadata sent by the server
      */
     public function getMetadata()
