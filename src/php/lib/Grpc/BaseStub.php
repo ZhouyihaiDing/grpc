@@ -42,11 +42,11 @@ class BaseStub
      */
     public function __construct($hostname, $opts, $channel = null)
     {
-      echo "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx\n";
         $ssl_roots = file_get_contents(
             dirname(__FILE__).'/../../../../etc/roots.pem'
         );
         ChannelCredentials::setDefaultRootsPem($ssl_roots);
+
         $this->hostname = $hostname;
         $this->update_metadata = null;
         if (isset($opts['update_metadata'])) {
@@ -61,7 +61,7 @@ class BaseStub
         if ($channel) {
             if (!is_a($channel, 'Grpc\Channel') &&
                 !is_a($channel, 'Grpc\Internal\InterceptorChannel') &&
-                !($channel instanceof CustomChannel)) {
+                !is_a($channel, 'Grpc\GrpcExtensionChannel')) {
                 throw new \Exception('The channel argument is not a Channel object '.
                     'or an InterceptorChannel object created by '.
                     'Interceptor::intercept($channel, Interceptor|Interceptor[] $interceptors)');
@@ -98,7 +98,6 @@ class BaseStub
                 'required. Please see one of the '.
                 'ChannelCredentials::create methods');
         }
-//        print_r($opts);
         return new Channel($hostname, $opts);
     }
 
@@ -247,7 +246,6 @@ class BaseStub
                 $options
             );
             $jwt_aud_uri = $this->_get_jwt_aud_uri($method);
-            echo "$jwt_aud_uri\n";
             if (is_callable($this->update_metadata)) {
                 $metadata = call_user_func(
                     $this->update_metadata,
@@ -496,7 +494,6 @@ class BaseStub
         array $metadata = [],
         array $options = []
     ) {
-      echo "_simpleRequest _simpleRequest _simpleRequest\n";
         $call_factory = $this->_UnaryUnaryCallFactory($this->channel, $deserialize);
         $call = $call_factory($method, $argument, $metadata, $options);
         return $call;
@@ -545,7 +542,6 @@ class BaseStub
         array $metadata = [],
         array $options = []
     ) {
-      echo "unaryStream\n";
         $call_factory = $this->_UnaryStreamCallFactory($this->channel, $deserialize);
         $call = $call_factory($method, $argument, $metadata, $options);
         return $call;
