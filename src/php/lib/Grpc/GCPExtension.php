@@ -22,8 +22,8 @@ class GCPCallInterceptor extends \Grpc\Interceptor
                                       $continuation)
   {
     $call = new GCPUnaryCall(
-        $continuation($method, $argument, $metadata, $options),
-        $argument, $metadata);
+      $continuation($method, $argument, $metadata, $options),
+      $argument, $metadata);
     $call->start();
     return $call;
   }
@@ -35,8 +35,8 @@ class GCPCallInterceptor extends \Grpc\Interceptor
                                        $continuation
   ) {
     $call = new GCPServerStreamCall(
-        $continuation($method, $argument, $metadata, $options),
-        $argument, $metadata);
+      $continuation($method, $argument, $metadata, $options),
+      $argument, $metadata);
     $call->start();
     return $call;
   }
@@ -44,26 +44,31 @@ class GCPCallInterceptor extends \Grpc\Interceptor
 
 class _ChannelRef
 {
-  private $real_channel;
   private $opts;
   private $channel_id;
   private $affinity_ref;
   private $active_stream_ref;
-  public function __construct($channel, $channel_id, $affinity_ref=0, $active_stream_ref=0)
-  {
-    if ($channel) {
-      $this->real_channel = $channel;
-    } else {
-//      $this->opts = $opts;
-      $this->real_channel = new \Grpc\Channel();
-    }
+  private $target;
 
+  public function __construct($target, $channel_id, $opts, $affinity_ref=0, $active_stream_ref=0)
+  {
+    $this->target = $target;
     $this->channel_id = $channel_id;
     $this->affinity_ref = $affinity_ref;
     $this->active_stream_ref = $active_stream_ref;
+    $this->opts = $opts;
   }
 
-  public function getRealChannel() {return $this->real_channel;}
+  public function getRealChannel($credentials) {
+
+    // 'credentials' in the array $opts will be unset during creating the channel.
+    if(!array_key_exists('credentials', $this->opts)){
+      $this->opts['credentials'] = $credentials;
+    }
+    $real_channel = new \Grpc\Channel($this->target, $this->opts);
+    return $real_channel;
+  }
+
   public function getAffinityRef() {return $this->affinity_ref;}
   public function getActiveStreamRef() {return $this->active_stream_ref;}
   public function affinityRefIncr() {$this->affinity_ref += 1;}
@@ -82,7 +87,8 @@ class GCPUnaryCall extends GcpBaseCall
 
   public function start() {
     $channel_ref = $this->rpcPreProcess($this->argument);
-    $this->real_call = $this->createRealCall($channel_ref->getRealChannel());
+    $real_channel = $channel_ref->getRealChannel($this->gcp_channel->credentials);
+    $this->real_call = $this->createRealCall($real_channel);
     $this->real_call->start($this->argument, $this->metadata, $this->options);
   }
 
@@ -108,7 +114,8 @@ class GCPServerStreamCall extends GcpBaseCall
 
   public function start() {
     $channel_ref = $this->rpcPreProcess($this->argument);
-    $this->real_call = $this->createRealCall($channel_ref->getRealChannel());
+    $this->real_call = $this->createRealCall($channel_ref->getRealChannel(
+      $this->gcp_channel->credentials));
     $this->real_call->start($this->argument, $this->metadata, $this->options);
   }
 
@@ -150,7 +157,7 @@ abstract class GcpBaseCall
     $this->options = $empty_call->_getOptions();
     $this->metadata = $empty_call->_getMetadata();
     $this->argument = $argument;
-    $this->_affinity = $GLOBALS['affinity_by_method'][$this->method];
+    $this->_affinity = $GLOBALS['global_conf']['affinity_by_method'][$this->method];
   }
 
   protected function rpcPreProcess($argument) {
@@ -167,7 +174,7 @@ abstract class GcpBaseCall
   }
 
   protected function rpcPostProcess($status, $response) {
-//    $gcp_channel = $GLOBALS['gcp_channel'.getmypid()];
+//    $gcp_channel = $global_conf['gcp_channel'.getmypid()];
     if($this->_affinity) {
       $command = $this->_affinity['command'];
       if ($command == 'BIND') {
@@ -179,7 +186,7 @@ abstract class GcpBaseCall
       } else if ($command == 'UNBIND') {
         $this->gcp_channel->_unbind($this->affinity_key);
       }
-//      $GLOBALS['gcp_channel' . getmypid()] = $gcp_channel;
+//      $global_conf['gcp_channel' . getmypid()] = $gcp_channel;
     }
     $this->channel_ref->activeStreamRefDecr();
   }
@@ -205,7 +212,8 @@ class GrpcExtensionChannel
   public $affinity_by_method = array(); // <= should be global.
   public $affinity_key_to_channel_ref;
   public $channel_refs = array();
-  public $update_metadata;
+//  public $update_metadata;
+  public $credentials;
 
   public function getChannelRefs() {
     return $this->channel_refs;
@@ -215,6 +223,11 @@ class GrpcExtensionChannel
     $this->max_size = 10;
     $this->max_concurrent_streams_low_watermark = 1;
     $this->target = $hostname;
+    $this->affinity_by_method = $GLOBALS['global_conf']['affinity_by_method'];
+    $this->affinity_key_to_channel_ref = array();
+    $this->channel_refs = array();
+    $this->credentials = $opts['credentials'];
+    unset($opts['credentials']);
     if (isset($opts['update_metadata'])) {
       if (is_callable($opts['update_metadata'])) {
         $this->update_metadata = $opts['update_metadata'];
@@ -222,7 +235,7 @@ class GrpcExtensionChannel
       unset($opts['update_metadata']);
     }
     $package_config = json_decode(
-      file_get_contents(dirname(__FILE__).'/../../composer.json'),
+      file_get_contents(dirname(__FILE__).'/composer.json'),
       true
     );
     if (!empty($cur_opts['grpc.primary_user_agent'])) {
@@ -233,9 +246,11 @@ class GrpcExtensionChannel
     $opts['grpc.primary_user_agent'] .=
       'grpc-php/'.$package_config['version'];
     $this->options = $opts;
-    $this->affinity_by_method = $GLOBALS['affinity_by_method'];
-    $this->affinity_key_to_channel_ref = array();
-    $this->channel_refs = array();
+  }
+
+  public function reStartCredentials() {
+    $credentials = \Grpc\ChannelCredentials::createSsl();
+    $this->credentials = $credentials;
   }
 
   public function _bind($channel_ref, $affinity_key)
@@ -245,14 +260,11 @@ class GrpcExtensionChannel
       echo "[bind]\n";
     }
     $channel_ref->affinityRefIncr();
-//    print_r($this->channel_refs);
     return $channel_ref;
   }
 
   public function _unbind($affinity_key)
   {
-//    print_r($this->affinity_key_to_channel_ref);
-//    print_r($this->channel_refs);
     $channel_ref = null;
     if (array_key_exists($affinity_key, $this->affinity_key_to_channel_ref)) {
       echo "[unbind]\n";
@@ -269,6 +281,7 @@ class GrpcExtensionChannel
 
   public function getChannelRef($affinity_key = null) {
 //    echo "[getChannelRef] with key $affinity_key\n";
+//        print_r($this->options);
     if ($affinity_key) {
       if (array_key_exists($affinity_key, $this->affinity_key_to_channel_ref)) {
         return $this->affinity_key_to_channel_ref[$affinity_key];
@@ -280,7 +293,6 @@ class GrpcExtensionChannel
     foreach ($this->channel_refs as $channel_ref) {
       if($channel_ref->getActiveStreamRef() <
         $this->max_concurrent_streams_low_watermark) {
-//        echo "[getChannelRef] max_concurrent_streams_low_watermark\n";
         return $channel_ref;
       } else {
         break;
@@ -291,8 +303,9 @@ class GrpcExtensionChannel
       $cur_opts = array_merge($this->options,
         ['grpc_gcp_channel_id' => $num_channel_refs,
           'grpc_target_persist_bound' => $this->max_size]);
-      $channel = new \Grpc\Channel($this->target, $cur_opts);
-      $channel_ref = new _ChannelRef($channel, $num_channel_refs);
+//      $channel = new \Grpc\Channel($this->target, $cur_opts);
+//      $cur_opts['credentials'] = $this->credentials;
+      $channel_ref = new _ChannelRef($this->target, $num_channel_refs, $cur_opts);
       array_unshift($this->channel_refs, $channel_ref);
     }
     echo "[getChannelRef] channel_refs ";
@@ -346,38 +359,59 @@ class GrpcExtensionChannel
   }
 }
 
+
 function enable_grpc_gcp($conf) {
-  // Parse affinity protobuf object
-  $config = json_decode($conf->serializeToJsonString(), true);
-  $api_conf = $config['api'][0];
-  $GLOBALS['target'] = $api_conf['target'];
-  $GLOBALS['channelPool'] = $api_conf['channelPool'];
-  $aff_by_method = array();
-  for($i=0; $i<count($api_conf['method']); $i++) {
-    // In proto3, if the value is default, eg 0 for int, it won't be serialized.
-    // Thus serialized string may not have `command` if the value is default 0(BOUND).
-    if (!array_key_exists('command', $api_conf['method'][$i]['affinity'])) {
-      $api_conf['method'][$i]['affinity']['command'] = 'BOUND';
+  if(apcu_exists('gcp_channel'.getmypid())) {
+    echo "hasssssssssssssssssskey\n";
+    $gcp_channel = apcu_fetch('gcp_channel'.getmypid());
+    $gcp_channel->reStartCredentials();
+    $channel_interceptor = new \Grpc\GCPCallInterceptor();
+    $channel = \Grpc\Interceptor::intercept($gcp_channel, $channel_interceptor);
+    $global_conf = apcu_fetch('global_conf'.getmypid());
+    $GLOBALS['global_conf'] = $global_conf;
+    return $channel;
+  } else {
+    echo "not has key!!!!!!!!!!!!!!!\n";
+    // Parse affinity protobuf object
+    $config = json_decode($conf->serializeToJsonString(), true);
+    $api_conf = $config['api'][0];
+    $global_conf['target'] = $api_conf['target'];
+    $global_conf['channelPool'] = $api_conf['channelPool'];
+    $aff_by_method = array();
+    for ($i = 0; $i < count($api_conf['method']); $i++) {
+      // In proto3, if the value is default, eg 0 for int, it won't be serialized.
+      // Thus serialized string may not have `command` if the value is default 0(BOUND).
+      if (!array_key_exists('command', $api_conf['method'][$i]['affinity'])) {
+        $api_conf['method'][$i]['affinity']['command'] = 'BOUND';
+      }
+      $aff_by_method[$api_conf['method'][$i]['name'][0]] = $api_conf['method'][$i]['affinity'];
     }
-    $aff_by_method[$api_conf['method'][$i]['name'][0]] = $api_conf['method'][$i]['affinity'];
+    $global_conf['affinity_by_method'] = $aff_by_method;
+
+    // Create GCP channel based on the information.
+    $hostname = $api_conf['target'][0];
+    $credentials = \Grpc\ChannelCredentials::createSsl();
+    $auth = ApplicationDefaultCredentials::getCredentials();
+    $opts = [
+      'credentials' => $credentials,
+      'update_metadata' => $auth->getUpdateMetadataFunc(),
+    ];
+    $gcp_channel = new \Grpc\GrpcExtensionChannel($hostname, $opts);
+    $channel_interceptor = new \Grpc\GCPCallInterceptor();
+    $channel = \Grpc\Interceptor::intercept($gcp_channel, $channel_interceptor);
+
+    // Push channel into the pool. Since pool is global to all processes, while gRPC
+    // channel can only be shared within the one process, thus use pid() as key to
+    // fetch the channel.
+    $GLOBALS['global_conf'] = $global_conf;
+    apcu_add('global_conf' . getmypid(), $global_conf);
+    apcu_add('gcp_channel' . getmypid(), $gcp_channel);
+    register_shutdown_function(function () {
+      // Push the current gcp_channel back into the pool when the script finishes.
+      //  $global_conf['gcp_channel'.getmypid()] = $channel;
+      echo "GCPScriptShutdownGCPScriptShutdownGCPScriptShutdownGCPScriptShutdown\n";
+    }
+    );
+    return $channel;
   }
-  $GLOBALS['affinity_by_method'] = $aff_by_method;
-
-  // Create GCP channel based on the information.
-  $hostname = $api_conf['target'][0];
-  $credentials = \Grpc\ChannelCredentials::createSsl();
-  $auth = ApplicationDefaultCredentials::getCredentials();
-  $opts = [
-    'credentials' => $credentials,
-    'update_metadata' => $auth->getUpdateMetadataFunc(),
-  ];
-  $channel = new \Grpc\GrpcExtensionChannel($hostname, $opts);
-  $channel_interceptor = new \Grpc\GCPCallInterceptor();
-  $gcp_channel = \Grpc\Interceptor::intercept($channel, $channel_interceptor);
-
-  // Push channel into the pool.
-  apcu_add('gcp_channel'.getmypid(), $channel);
-
-  $GLOBALS['gcp_channel'.getmypid()] = $channel;
-  return $gcp_channel;
 }

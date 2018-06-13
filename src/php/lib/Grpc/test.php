@@ -88,8 +88,9 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   $result = (count($gcp_channel->getNext()->getChannelRefs()) == 1);
   assertEqual(1, count($gcp_channel->getNext()->getChannelRefs()));
 }
+print_r($gcp_channel->getNext()->getChannelRefs());
 
-
+/*
 // Test CreateSession New Channel
 $rpc_calls = array();
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
@@ -135,7 +136,7 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
 
 print_r($gcp_channel->getNext()->getChannelRefs());
 
-/*
+
 // Test Create List Delete Session
 $create_session_request = new CreateSessionRequest();
 $create_session_request->setDatabase($database);
