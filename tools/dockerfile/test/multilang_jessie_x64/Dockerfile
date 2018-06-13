@@ -100,12 +100,13 @@ RUN apt-get update && apt-get -y install libgflags-dev libgtest-dev libc++-dev c
 RUN touch .profile
 RUN curl -o- https://raw.githubusercontent.com/creationix/nvm/v0.25.4/install.sh | bash
 # Install all versions of node that we want to test
-RUN /bin/bash -l -c "nvm install 4 && npm config set cache /tmp/npm-cache && npm install -g npm"
-RUN /bin/bash -l -c "nvm install 5 && npm config set cache /tmp/npm-cache && npm install -g npm"
-RUN /bin/bash -l -c "nvm install 6 && npm config set cache /tmp/npm-cache && npm install -g npm"
-RUN /bin/bash -l -c "nvm install 8 && npm config set cache /tmp/npm-cache && npm install -g npm"
-RUN /bin/bash -l -c "nvm install 9 && npm config set cache /tmp/npm-cache && npm install -g npm"
-RUN /bin/bash -l -c "nvm alias default 9"
+RUN /bin/bash -l -c "nvm install 4 && npm config set cache /tmp/npm-cache"
+RUN /bin/bash -l -c "nvm install 5 && npm config set cache /tmp/npm-cache"
+RUN /bin/bash -l -c "nvm install 6 && npm config set cache /tmp/npm-cache"
+RUN /bin/bash -l -c "nvm install 8 && npm config set cache /tmp/npm-cache"
+RUN /bin/bash -l -c "nvm install 9 && npm config set cache /tmp/npm-cache"
+RUN /bin/bash -l -c "nvm install 10 && npm config set cache /tmp/npm-cache"
+RUN /bin/bash -l -c "nvm alias default 10"
 #=================
 # PHP dependencies
 
@@ -154,14 +155,6 @@ ENV PATH ~/.local/bin:$PATH
 
 # Install Mako to generate files in grpc/grpc-node
 RUN pip install Mako
-
-# Prepare ccache
-RUN ln -s /usr/bin/ccache /usr/local/bin/gcc
-RUN ln -s /usr/bin/ccache /usr/local/bin/g++
-RUN ln -s /usr/bin/ccache /usr/local/bin/cc
-RUN ln -s /usr/bin/ccache /usr/local/bin/c++
-RUN ln -s /usr/bin/ccache /usr/local/bin/clang
-RUN ln -s /usr/bin/ccache /usr/local/bin/clang++
 
 
 RUN mkdir /var/local/jenkins
