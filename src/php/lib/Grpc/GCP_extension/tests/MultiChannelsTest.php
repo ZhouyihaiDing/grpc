@@ -59,7 +59,14 @@ list($gcp_channel, $call_invoker) = \Grpc_gcp\enableGrpcGcp($conf);
 $opts['grpc_call_invoker'] = $call_invoker;
 $stub = new SpannerGrpcClient($hostname, $opts, $gcp_channel);
 
-$database = 'projects/ddyihai-firestore/instances/test-instance/databases/test-database';;
+//$gcp_channel = \Grpc_gcp\enableGrpcGcp($conf);
+////$opts['grpc_call_invoker'] = $call_invoker;
+//$stub = new SpannerGrpcClient($hostname, $opts, $gcp_channel);
+
+// $database = 'projects/ddyihai-firestore/instances/test-instance/databases/test-database';;
+$database = 'projects/grpc-gcp/instances/sample/databases/benchmark';
+$table = 'storage';
+$data = 'payload';
 
 
 function assertEqual($var1, $var2, $str = "") {
@@ -90,7 +97,8 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   $result = (count($gcp_channel->getChannelRefs()) == 1);
   assertEqual(1, count($gcp_channel->getChannelRefs()));
 }
-//print_r($gcp_channel->getChannelRefs());
+print_r($gcp_channel->getChannelRefs());
+
 
 // Test CreateSession New Channel
 $rpc_calls = array();
@@ -134,4 +142,5 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
   assertStatusOk($status);
 }
 //print_r($gcp_channel->getChannelRefs());
+
 

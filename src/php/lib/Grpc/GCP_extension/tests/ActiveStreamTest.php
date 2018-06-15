@@ -43,9 +43,15 @@ use Google\Protobuf\Struct;
 
 use Google\Auth\ApplicationDefaultCredentials;
 
+$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
+$_WATER_MARK = 2;
+
 $string = file_get_contents("spanner.grpc.config");
 $conf = new Grpc_gcp\ExtensionConfig();
 $conf->mergeFromJsonString($string);
+$channel_pool = $conf->getApi()[0]->getChannelPool();
+$channel_pool->setMaxConcurrentStreamsLowWatermark($_WATER_MARK);
+
 
 $hostname = 'spanner.googleapis.com';
 $credentials = \Grpc\ChannelCredentials::createSsl();
@@ -63,7 +69,6 @@ $database = 'projects/grpc-gcp/instances/sample/databases/benchmark';
 $table = 'storage';
 $data = 'payload';
 
-
 function assertEqual($var1, $var2, $str = "") {
   if ($var1 != $var2) {
     throw new \Exception("$str $var1 not matches to $var2.\n");
@@ -76,108 +81,93 @@ function assertStatusOk($status) {
   }
 }
 
-$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
-
-// Test Create List Delete Session
-$create_session_request = new CreateSessionRequest();
-$create_session_request->setDatabase($database);
-$create_session_call = $stub->CreateSession($create_session_request);
-list($session, $status) = $create_session_call->wait();
-assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
-
-$list_session_request = new ListSessionsRequest();
-$list_session_request->setDatabase($database);
-$list_session_call = $stub->ListSessions($list_session_request);
-list($list_session_response, $status) = $list_session_call->wait();
-assertStatusOk($status);
-//foreach ($list_session_response->getSessions() as $session) {
-//  echo "session:\n";
-//  echo "name - ". $session->getName(). PHP_EOL;
-//}
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
-
-$delete_session_request = new DeleteSessionRequest();
-$delete_session_request->setName($session->getName());
-list($delete_session_response, $status) = $stub->DeleteSession($delete_session_request)->wait();
-assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
-
-$list_session_request = new ListSessionsRequest();
-$list_session_request->setDatabase($database);
-$list_session_call = $stub->ListSessions($list_session_request);
-list($list_session_response, $status) = $list_session_call->wait();
-assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
-
-// Test eExecute Sql
-$create_session_request = new CreateSessionRequest();
-$create_session_request->setDatabase($database);
-$create_session_call = $stub->CreateSession($create_session_request);
-list($session, $status) = $create_session_call->wait();
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
-
+// Test Concurrent Streams Watermark
 $sql_cmd = "select id from $table";
+$result = ['payload'];
+$exec_sql_calls = array();
+$sessions = array();
+for ($i=0; $i < $_WATER_MARK; $i++) {
+  $create_session_request = new CreateSessionRequest();
+  $create_session_request->setDatabase($database);
+  $create_session_call = $stub->CreateSession($create_session_request);
+  list($session, $status) = $create_session_call->wait();
+  assertStatusOk($status);
+  assertEqual(1, count($gcp_channel->getChannelRefs()));
+  assertEqual($i + 1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
+  assertEqual($i, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+
+  $exec_sql_request = new ExecuteSqlRequest();
+  $exec_sql_request->setSession($session->getName());
+  $exec_sql_request->setSql($sql_cmd);
+  $exec_sql_call = $stub->ExecuteSql($exec_sql_request);
+  array_push($exec_sql_calls, $exec_sql_call);
+  array_push($sessions, $session);
+  assertEqual(1, count($gcp_channel->getChannelRefs()));
+  assertEqual($i + 1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
+  assertEqual($i + 1, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+}
+
+$create_session_request = new CreateSessionRequest();
+$create_session_request->setDatabase($database);
+$create_session_call = $stub->CreateSession($create_session_request);
+list($session, $status) = $create_session_call->wait();
+assertStatusOk($status);
+print_r($gcp_channel->getChannelRefs());
+assertEqual(2, count($gcp_channel->getChannelRefs()));
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getAffinityRef());
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getActiveStreamRef());
+assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+
+// The new request uses the new session id.
 $exec_sql_request = new ExecuteSqlRequest();
 $exec_sql_request->setSession($session->getName());
 $exec_sql_request->setSql($sql_cmd);
 $exec_sql_call = $stub->ExecuteSql($exec_sql_request);
+assertEqual(2, count($gcp_channel->getChannelRefs()));
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getAffinityRef());
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getActiveStreamRef());
+assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
+assertEqual(1, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+
+// Clear session and stream
 list($exec_sql_reply, $status) = $exec_sql_call->wait();
 assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
+assertEqual($exec_sql_reply->getRows()[0]->getValues()[0]->getStringValue(), $result[0]);
+assertEqual(2, count($gcp_channel->getChannelRefs()));
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getAffinityRef());
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getActiveStreamRef());
 assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
 assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
-$result = ['payload'];
-$i = 0;
-
-foreach ($exec_sql_reply->getRows() as $row) {
-  foreach($row->getValues() as $value) {
-    assertEqual($value->getStringValue(), $result[$i]);
-    $i += 1;
-  }
-}
 
 $delete_session_request = new DeleteSessionRequest();
 $delete_session_request->setName($session->getName());
-list($delete_session_response, $status) = $stub->DeleteSession($delete_session_request)->wait();
+list($session, $status) = $stub->DeleteSession($delete_session_request)->wait();
 assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
+assertEqual(2, count($gcp_channel->getChannelRefs()));
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getAffinityRef());
+assertEqual(2, $gcp_channel->getChannelRefs()[1]->getActiveStreamRef());
 assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
 assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
 
-// Test Execute Streaming Sql
-$create_session_request = new CreateSessionRequest();
-$create_session_request->setDatabase($database);
-$create_session_call = $stub->CreateSession($create_session_request);
-list($session, $status) = $create_session_call->wait();
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+for ($i=0; $i < $_WATER_MARK; $i++) {
+  list($exec_sql_reply, $status) = $exec_sql_calls[$i]->wait();
+  assertStatusOk($status);
+  assertEqual($exec_sql_reply->getRows()[0]->getValues()[0]->getStringValue(), $result[0]);
+  assertEqual(2, count($gcp_channel->getChannelRefs()));
+  assertEqual(2 - $i, $gcp_channel->getChannelRefs()[1]->getAffinityRef());
+  assertEqual(1 - $i, $gcp_channel->getChannelRefs()[1]->getActiveStreamRef());
+  assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
+  assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
 
-$sql_cmd = "select id from $table";
-$stream_exec_sql_request = new ExecuteSqlRequest();
-$stream_exec_sql_request->setSession($session->getName());
-$stream_exec_sql_request->setSql($sql_cmd);
-$stream_exec_sql_call = $stub->ExecuteStreamingSql($stream_exec_sql_request);
-$features = $stream_exec_sql_call->responses();
-$result = ['payload'];
-$i = 0;
-foreach ($features as $feature) {
-  foreach ($feature->getValues() as $value) {
-    assertEqual($value->getStringValue(), $result[$i]);
-    $i += 1;
-  }
+  $delete_session_request = new DeleteSessionRequest();
+  $delete_session_request->setName($sessions[$i]->getName());
+  list($session, $status) = $stub->DeleteSession($delete_session_request)->wait();
+  assertEqual(2, count($gcp_channel->getChannelRefs()));
+  assertEqual(1 - $i, $gcp_channel->getChannelRefs()[1]->getAffinityRef());
+  assertEqual(1 - $i, $gcp_channel->getChannelRefs()[1]->getActiveStreamRef());
+  assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
+  assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
 }
-$status = $stream_exec_sql_call->getStatus();
-assertStatusOk($status);
+
 
