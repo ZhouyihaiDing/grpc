@@ -1,8 +1,8 @@
 <?php
 
-namespace Grpc_gcp;
+namespace Grpc\GCP;
 
-class GrpcExtensionChannel
+class GrpcExtensionChannel implements \Grpc\ChannelInterface
 {
   public $max_size;
   public $max_concurrent_streams_low_watermark;
@@ -12,7 +12,7 @@ class GrpcExtensionChannel
   public $affinity_key_to_channel_ref;
   public $channel_refs;
   public $credentials;
-  public $global_conf;
+  public $affinity_conf;
   // Version is used for debugging in PHP-FPM mode.
   public $version;
 
@@ -20,17 +20,26 @@ class GrpcExtensionChannel
     return $this->channel_refs;
   }
 
-  public function __construct($hostname, $opts) {
+  public function __construct($hostname, $opts = array())
+  {
     $this->version = 0;
     $this->max_size = 10;
-    $this->max_concurrent_streams_low_watermark = 1;
+    $this->max_concurrent_streams_low_watermark = 100;
+    if ($opts['affinity_conf']['channelPool']['maxSize']) {
+      $this->max_size = $opts['affinity_conf']['channelPool']['maxSize'];
+    }
+    if ($opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark']) {
+      $this->max_concurrent_streams_low_watermark =
+          $opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark'];
+    }
+    print_r($opts['affinity_conf']);
     $this->target = $hostname;
-    $this->affinity_by_method = $opts['global_conf']['affinity_by_method'];
+    $this->affinity_by_method = $opts['affinity_conf']['affinity_by_method'];
     $this->affinity_key_to_channel_ref = array();
     $this->channel_refs = array();
-    $this->global_conf = $opts['global_conf'];
+    $this->affinity_conf = $opts['affinity_conf'];
     $this->credentials = $opts['credentials'];
-    unset($opts['global_conf']);
+    unset($opts['affinity_conf']);
     unset($opts['credentials']);
     unset($opts['update_metadata']);
     $package_config = json_decode(
@@ -55,6 +64,7 @@ class GrpcExtensionChannel
 
   public function _bind($channel_ref, $affinity_key)
   {
+    echo "bind!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
     if (!array_key_exists($affinity_key, $this->affinity_key_to_channel_ref)) {
       $this->affinity_key_to_channel_ref[$affinity_key] = $channel_ref;
     }
@@ -76,7 +86,6 @@ class GrpcExtensionChannel
     return $a->getActiveStreamRef() - $b->getActiveStreamRef();
   }
 
-
   public function getChannelRef($affinity_key = null) {
     if ($affinity_key) {
       if (array_key_exists($affinity_key, $this->affinity_key_to_channel_ref)) {
@@ -86,13 +95,10 @@ class GrpcExtensionChannel
     }
     usort($this->channel_refs, array($this, 'cmp_by_active_stream_ref'));
 
-    foreach ($this->channel_refs as $channel_ref) {
-      if($channel_ref->getActiveStreamRef() <
-        $this->max_concurrent_streams_low_watermark) {
-        return $channel_ref;
-      } else {
-        break;
-      }
+    if(count($this->channel_refs) > 0 && $this->channel_refs[0]->getActiveStreamRef() <
+      $this->max_concurrent_streams_low_watermark) {
+      echo "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx". $this->channel_refs[0]->getActiveStreamRef(). " ". $this->max_concurrent_streams_low_watermark. "\n";
+      return $this->channel_refs[0];
     }
     $num_channel_refs = count($this->channel_refs);
     if ($num_channel_refs < $this->max_size) {
@@ -139,15 +145,19 @@ class GrpcExtensionChannel
     }
   }
 
-  public function getConnectivityState($try_to_connect) {
+  public function getConnectivityState($try_to_connect = false) {
     return $this->connectivityFunc('getConnectivityState', $try_to_connect);
   }
 
-  public function watchConnectivityState() {
+  public function watchConnectivityState($last_state, \Grpc\Timeval $deadline_obj) {
     return $this->connectivityFunc('watchConnectivityState');
   }
 
   public function getTarget() {
     return $this->target;
+  }
+
+  public function close() {
+
   }
 }

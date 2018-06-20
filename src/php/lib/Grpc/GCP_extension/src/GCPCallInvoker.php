@@ -1,6 +1,6 @@
 <?php
 
-namespace Grpc_gcp;
+namespace Grpc\GCP;
 
 class GCPCallInvoker implements \Grpc\CallInvoker
 {
@@ -42,12 +42,13 @@ abstract class GcpBaseCall
     $this->deserialize = $deserialize;
     $this->options = $options;
     $this->_affinity = null;
-    if (isset($this->gcp_channel->global_conf['affinity_by_method'][$method])) {
-      $this->_affinity = $this->gcp_channel->global_conf['affinity_by_method'][$method];
+
+    if (isset($this->gcp_channel->affinity_conf['affinity_by_method'][$method])) {
+      $this->_affinity = $this->gcp_channel->affinity_conf['affinity_by_method'][$method];
     }
   }
 
-  protected function rpcPreProcess($argument) {
+  protected function _rpcPreProcess($argument) {
     $this->affinity_key = null;
     if($this->_affinity) {
       $command = $this->_affinity['command'];
@@ -60,7 +61,7 @@ abstract class GcpBaseCall
     return $this->channel_ref;
   }
 
-  protected function rpcPostProcess($status, $response) {
+  protected function _rpcPostProcess($status, $response) {
     if($this->_affinity) {
       $command = $this->_affinity['command'];
       if ($command == 'BIND') {
@@ -97,7 +98,7 @@ class GCPUnaryCall extends GcpBaseCall
 
   // Public funtions are rewriting all methods inside UnaryCall
   public function start($argument, $metadata, $options) {
-    $channel_ref = $this->rpcPreProcess($argument);
+    $channel_ref = $this->_rpcPreProcess($argument);
     $real_channel = $channel_ref->getRealChannel($this->gcp_channel->credentials);
     $this->real_call = $this->createRealCall($real_channel);
     $this->real_call->start($argument, $metadata, $options);
@@ -105,7 +106,7 @@ class GCPUnaryCall extends GcpBaseCall
 
   public function wait() {
     list($response, $status) = $this->real_call->wait();
-    $this->rpcPostProcess($status, $response);
+    $this->_rpcPostProcess($status, $response);
     return [$response, $status];
   }
 
@@ -124,7 +125,7 @@ class GCPServerStreamCall extends GcpBaseCall
   }
 
   public function start($argument, $metadata, $options) {
-    $channel_ref = $this->rpcPreProcess($argument);
+    $channel_ref = $this->_rpcPreProcess($argument);
     $this->real_call = $this->createRealCall($channel_ref->getRealChannel(
       $this->gcp_channel->credentials));
     $this->real_call->start($argument, $metadata, $options);
@@ -144,7 +145,7 @@ class GCPServerStreamCall extends GcpBaseCall
 
   public function getStatus() {
     $status = $this->real_call->getStatus();
-    $this->rpcPostProcess($status, $this->response);
+    $this->_rpcPostProcess($status, $this->response);
     return $status;
   }
 }

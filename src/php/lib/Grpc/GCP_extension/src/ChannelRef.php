@@ -1,6 +1,6 @@
 <?php
 
-namespace Grpc_gcp;
+namespace Grpc\GCP;
 
 class _ChannelRef
 {

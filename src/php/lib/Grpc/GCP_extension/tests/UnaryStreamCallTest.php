@@ -1,9 +1,7 @@
 <?php
-
-
 require_once(dirname(__FILE__).'/vendor/autoload.php');
 require_once(dirname(__FILE__).'/../src/ChannelRef.php');
-require_once(dirname(__FILE__).'/../src/EnableGCP.php');
+require_once(dirname(__FILE__).'/../src/GCPConfig.php');
 require_once(dirname(__FILE__).'/../src/GCPCallInvoker.php');
 require_once(dirname(__FILE__).'/../src/GCPExtensionChannel.php');
 require_once(dirname(__FILE__).'/generated/Grpc_gcp/ExtensionConfig.php');
@@ -15,34 +13,16 @@ require_once(dirname(__FILE__).'/generated/Grpc_gcp/MethodConfig.php');
 require_once(dirname(__FILE__).'/generated/GPBMetadata/GrpcGcp.php');
 
 use Google\Cloud\Spanner\V1\SpannerGrpcClient;
-use Google\Cloud\Spanner\V1\BeginTransactionRequest;
-use Google\Cloud\Spanner\V1\CommitRequest;
-use Google\Cloud\Spanner\V1\CommitResponse;
 use Google\Cloud\Spanner\V1\CreateSessionRequest;
 use Google\Cloud\Spanner\V1\DeleteSessionRequest;
 use Google\Cloud\Spanner\V1\ExecuteSqlRequest;
-use Google\Cloud\Spanner\V1\GetSessionRequest;
-use Google\Cloud\Spanner\V1\KeySet;
 use Google\Cloud\Spanner\V1\ListSessionsRequest;
-use Google\Cloud\Spanner\V1\ListSessionsResponse;
-use Google\Cloud\Spanner\V1\Mutation;
-use Google\Cloud\Spanner\V1\PartialResultSet;
-use Google\Cloud\Spanner\V1\PartitionOptions;
-use Google\Cloud\Spanner\V1\PartitionQueryRequest;
-use Google\Cloud\Spanner\V1\PartitionReadRequest;
-use Google\Cloud\Spanner\V1\PartitionResponse;
-use Google\Cloud\Spanner\V1\ReadRequest;
-use Google\Cloud\Spanner\V1\ResultSet;
-use Google\Cloud\Spanner\V1\RollbackRequest;
-use Google\Cloud\Spanner\V1\Session;
-use Google\Cloud\Spanner\V1\Transaction;
-use Google\Cloud\Spanner\V1\TransactionOptions;
-use Google\Cloud\Spanner\V1\TransactionSelector;
-use Google\Protobuf\GPBEmpty;
-use Google\Protobuf\Struct;
 
 use Google\Auth\ApplicationDefaultCredentials;
 
+$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
+
+// Read GCP config.
 $string = file_get_contents("spanner.grpc.config");
 $conf = new Grpc_gcp\ExtensionConfig();
 $conf->mergeFromJsonString($string);
@@ -55,14 +35,14 @@ $opts = [
   'update_metadata' => $auth->getUpdateMetadataFunc(),
 ];
 
-list($gcp_channel, $call_invoker) = \Grpc_gcp\enableGrpcGcp($conf);
-$opts['grpc_call_invoker'] = $call_invoker;
-$stub = new SpannerGrpcClient($hostname, $opts, $gcp_channel);
+$config = new \Grpc\GCP\Config($conf);
+$opts['grpc_call_invoker'] = $config->callInvoker();
+$stub = new SpannerGrpcClient($hostname, $opts, $config->channel());
+$gcp_channel = $config->channel();
 
 $database = 'projects/grpc-gcp/instances/sample/databases/benchmark';
 $table = 'storage';
 $data = 'payload';
-
 
 function assertEqual($var1, $var2, $str = "") {
   if ($var1 != $var2) {
@@ -75,8 +55,6 @@ function assertStatusOk($status) {
     throw new \Exception("gRPC status not OK: ".$status->code."\n");
   }
 }
-
-$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
 
 // Test Create List Delete Session
 $create_session_request = new CreateSessionRequest();
