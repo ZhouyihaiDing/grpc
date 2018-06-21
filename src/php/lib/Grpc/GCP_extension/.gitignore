@@ -1,3 +1,4 @@
 tests/generated
 tests/vender
 tests/composer.lock
+tests/grpc-gcp.json

@@ -1,4 +1,7 @@
 <?php
+
+putenv("GOOGLE_APPLICATION_CREDENTIALS=./grpc-gcp.json");
+
 require_once(dirname(__FILE__).'/vendor/autoload.php');
 require_once(dirname(__FILE__).'/../src/ChannelRef.php');
 require_once(dirname(__FILE__).'/../src/GCPConfig.php');

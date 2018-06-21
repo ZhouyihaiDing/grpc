@@ -1,4 +1,6 @@
 <?php
+header('Content-type: text/plain');
+
 require_once(dirname(__FILE__).'/vendor/autoload.php');
 require_once(dirname(__FILE__).'/../src/ChannelRef.php');
 require_once(dirname(__FILE__).'/../src/GCPConfig.php');
@@ -15,9 +17,13 @@ require_once(dirname(__FILE__).'/generated/GPBMetadata/GrpcGcp.php');
 use Google\Cloud\Spanner\V1\SpannerGrpcClient;
 use Google\Cloud\Spanner\V1\CreateSessionRequest;
 use Google\Cloud\Spanner\V1\DeleteSessionRequest;
+
 use Symfony\Component\Cache\Adapter\FilesystemAdapter;
+use Symfony\Component\Cache\Adapter\ApcuAdapter;
 
 use Google\Auth\ApplicationDefaultCredentials;
+
+putenv("GOOGLE_APPLICATION_CREDENTIALS=./grpc-gcp.json");
 
 $string = file_get_contents("spanner.grpc.config");
 $conf = new Grpc_gcp\ExtensionConfig();
@@ -32,7 +38,7 @@ $opts = [
 ];
 
 $cacheItemPool = new FilesystemAdapter();
-$config = new \Grpc\GCP\Config($conf, $cacheItemPool);
+$config = new \Grpc\GCP\Config($conf);
 $opts['grpc_call_invoker'] = $config->callInvoker();
 $stub = new SpannerGrpcClient($hostname, $opts, $config->channel());
 $gcp_channel = $config->channel();
@@ -54,7 +60,7 @@ function assertStatusOk($status) {
   }
 }
 
-$_DEFAULT_MAX_CHANNELS_PER_TARGET = 1;
+$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
 
 // Test CreateSession Reuse Channel
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
@@ -71,7 +77,7 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   $result = (count($gcp_channel->getChannelRefs()) == 1);
   assertEqual(1, count($gcp_channel->getChannelRefs()));
 }
-print_r($gcp_channel->getChannelRefs());
+//print_r($gcp_channel->getChannelRefs());
 
 
 // Test CreateSession New Channel

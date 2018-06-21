@@ -18,18 +18,21 @@ class Config
   private $gcp_channel;
   private $gcp_call_invoker;
 
-  public function __construct($conf, CacheItemPoolInterface $cacheItemPool = null)
+  public function __construct($conf)
   {
+    session_start();
     $gcp_channel = null;
     $channel_pool_key = 'gcp_channel' . getmypid();
     $gcp_call_invoker = new GCPCallInvoker();
 
-    $item = $cacheItemPool->getItem($channel_pool_key);
-
-    if ($item->isHit()) {
-      print_r($item);
+//    $item = $cacheItemPool->getItem($channel_pool_key);
+//    print_r($item);
+    // if ($item->isHit()) {
+    if(array_key_exists($channel_pool_key, $_SESSION)) {
+      echo "count: ". count($_SESSION). "\n";
       echo "GCP channel has already created by this PHP-FPM worker process\n";
-      $gcp_channel = $item->get();
+      $gcp_channel = unserialize($_SESSION[$channel_pool_key]);
+//      $gcp_channel = $item->get();
       $gcp_channel->reCreateCredentials();
     } else {
       echo "GCP channel has not created by this worker process before\n";
@@ -49,15 +52,20 @@ class Config
     $this->gcp_channel = $gcp_channel;
     $this->gcp_call_invoker = $gcp_call_invoker;
 
-    register_shutdown_function(function ($cacheItemPool, $item, $channel, $channel_pool_key) {
+    register_shutdown_function(function ($cacheItemPool, $channel, $channel_pool_key) {
       // Push the current gcp_channel back into the pool when the script finishes.
       //  $affinity_conf['gcp_channel'.getmypid()] = $channel;
-      echo "register_shutdown_function " . $channel->version . "\n";
-      $item->set($channel);
-      $cacheItemPool->save($item);
-      print_r($item);
+      echo "register_shutdown_function $channel_pool_key version:" . $channel->version . "\n";
+//      $item->set($channel);
+//      $is_s = $cacheItemPool->saveDeferred($item);
+//      if ($is_s) {
+//        echo "persisted\n";
+//      }
+//      print_r($item);
+      $_SESSION[$channel_pool_key] = serialize($channel);
+//      print_r($GLOBALS);
 
-    }, $cacheItemPool, $item, $gcp_channel, $channel_pool_key);
+    }, $cacheItemPool, $gcp_channel, $channel_pool_key);
   }
 
   public function channel() {

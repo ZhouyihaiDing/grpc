@@ -32,7 +32,7 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
       $this->max_concurrent_streams_low_watermark =
           $opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark'];
     }
-    print_r($opts['affinity_conf']);
+//    print_r($opts['affinity_conf']);
     $this->target = $hostname;
     $this->affinity_by_method = $opts['affinity_conf']['affinity_by_method'];
     $this->affinity_key_to_channel_ref = array();
