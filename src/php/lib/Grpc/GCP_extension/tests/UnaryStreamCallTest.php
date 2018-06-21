@@ -7,12 +7,11 @@ require_once(dirname(__FILE__).'/../src/ChannelRef.php');
 require_once(dirname(__FILE__).'/../src/GCPConfig.php');
 require_once(dirname(__FILE__).'/../src/GCPCallInvoker.php');
 require_once(dirname(__FILE__).'/../src/GCPExtensionChannel.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/ExtensionConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/AffinityConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/AffinityConfig_Command.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/ApiConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/ChannelPoolConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/MethodConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/AffinityConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/AffinityConfig_Command.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/ApiConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/ChannelPoolConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/MethodConfig.php');
 require_once(dirname(__FILE__).'/generated/GPBMetadata/GrpcGcp.php');
 
 use Google\Cloud\Spanner\V1\SpannerGrpcClient;
@@ -24,29 +23,28 @@ use Google\Cloud\Spanner\V1\ListSessionsRequest;
 use Google\Auth\ApplicationDefaultCredentials;
 
 $_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
-
-// Read GCP config.
-$string = file_get_contents("spanner.grpc.config");
-$conf = new Grpc_gcp\ExtensionConfig();
-$conf->mergeFromJsonString($string);
-
 $hostname = 'spanner.googleapis.com';
+$string = file_get_contents("spanner.grpc.config");
+
+
+$conf = new \Grpc\Gcp\ApiConfig();
+$conf->mergeFromJsonString($string);
+$config = new \Grpc\GCP\Config($hostname, $conf);
+
 $credentials = \Grpc\ChannelCredentials::createSsl();
 $auth = ApplicationDefaultCredentials::getCredentials();
 $opts = [
   'credentials' => $credentials,
   'update_metadata' => $auth->getUpdateMetadataFunc(),
+  'grpc_call_invoker' => $config->callInvoker(),
 ];
 
-$config = new \Grpc\GCP\Config($conf);
-$opts['grpc_call_invoker'] = $config->callInvoker();
-$stub = new SpannerGrpcClient($hostname, $opts, $config->channel());
-$gcp_channel = $config->channel();
+$stub = new SpannerGrpcClient($hostname, $opts);
+$call_invoker = $config->callInvoker();
 
 $database = 'projects/grpc-gcp/instances/sample/databases/benchmark';
 $table = 'storage';
 $data = 'payload';
-
 function assertEqual($var1, $var2, $str = "") {
   if ($var1 != $var2) {
     throw new \Exception("$str $var1 not matches to $var2.\n");
@@ -65,9 +63,9 @@ $create_session_request->setDatabase($database);
 $create_session_call = $stub->CreateSession($create_session_request);
 list($session, $status) = $create_session_call->wait();
 assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(1, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 
 $list_session_request = new ListSessionsRequest();
 $list_session_request->setDatabase($database);
@@ -78,35 +76,35 @@ assertStatusOk($status);
 //  echo "session:\n";
 //  echo "name - ". $session->getName(). PHP_EOL;
 //}
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(1, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 
 $delete_session_request = new DeleteSessionRequest();
 $delete_session_request->setName($session->getName());
 list($delete_session_response, $status) = $stub->DeleteSession($delete_session_request)->wait();
 assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 
 $list_session_request = new ListSessionsRequest();
 $list_session_request->setDatabase($database);
 $list_session_call = $stub->ListSessions($list_session_request);
 list($list_session_response, $status) = $list_session_call->wait();
 assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 
 // Test eExecute Sql
 $create_session_request = new CreateSessionRequest();
 $create_session_request->setDatabase($database);
 $create_session_call = $stub->CreateSession($create_session_request);
 list($session, $status) = $create_session_call->wait();
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(1, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 
 $sql_cmd = "select id from $table";
 $exec_sql_request = new ExecuteSqlRequest();
@@ -115,9 +113,9 @@ $exec_sql_request->setSql($sql_cmd);
 $exec_sql_call = $stub->ExecuteSql($exec_sql_request);
 list($exec_sql_reply, $status) = $exec_sql_call->wait();
 assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(1, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 $result = ['payload'];
 $i = 0;
 
@@ -132,18 +130,18 @@ $delete_session_request = new DeleteSessionRequest();
 $delete_session_request->setName($session->getName());
 list($delete_session_response, $status) = $stub->DeleteSession($delete_session_request)->wait();
 assertStatusOk($status);
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 
 // Test Execute Streaming Sql
 $create_session_request = new CreateSessionRequest();
 $create_session_request->setDatabase($database);
 $create_session_call = $stub->CreateSession($create_session_request);
 list($session, $status) = $create_session_call->wait();
-assertEqual(1, count($gcp_channel->getChannelRefs()));
-assertEqual(1, $gcp_channel->getChannelRefs()[0]->getAffinityRef());
-assertEqual(0, $gcp_channel->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
+assertEqual(1, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
 
 $sql_cmd = "select id from $table";
 $stream_exec_sql_request = new ExecuteSqlRequest();

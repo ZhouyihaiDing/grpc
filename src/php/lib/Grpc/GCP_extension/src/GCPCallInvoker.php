@@ -4,6 +4,32 @@ namespace Grpc\GCP;
 
 class GCPCallInvoker implements \Grpc\CallInvoker
 {
+  private $channel;
+  private $affinity_conf;
+
+  public function __construct($affinity_conf) {
+    $this->affinity_conf = $affinity_conf;
+  }
+
+  public function channelFactory($hostname, $opts)
+  {
+    if($this->channel) {
+      // call_invoker object has already created from previews PHP-FPM scripts.
+      // Only need to udpate the $opts including the credentials.
+      $this->channel->updateOpts($opts);
+    } else {
+      $opts['affinity_conf'] = $this->affinity_conf;
+      $channel = new \Grpc\GCP\GrpcExtensionChannel($hostname, $opts);
+      $this->channel = $channel;
+    }
+    return $this->channel;
+  }
+
+  // _getChannel is used for testing only.
+  public function _getChannel() {
+    return $this->channel;
+  }
+
   public function UnaryCall($channel, $method, $deserialize, $options) {
     return new GCPUnaryCall($channel, $method, $deserialize, $options);
   }
@@ -36,7 +62,6 @@ abstract class GcpBaseCall
 
   // Get all information needed to create a Call object and start the Call.
   public function __construct($channel, $method, $deserialize, $options) {
-    echo "create GcpBaseCall\n";
     $this->gcp_channel = $channel;
     $this->method = $method;
     $this->deserialize = $deserialize;
@@ -83,7 +108,6 @@ abstract class GcpBaseCall
       // TODO(ddyihai): names.split('.') because one RPC can have multiple affinityKey
       $getAttrMethod = 'get'.ucfirst($names);
       $affinity_key = call_user_func_array(array($proto, $getAttrMethod), array());
-      echo "[getAffinityKeyFromProto] $affinity_key\n";
       return $affinity_key;
     }
   }

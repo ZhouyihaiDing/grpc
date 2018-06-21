@@ -6,42 +6,38 @@ require_once(dirname(__FILE__).'/../src/ChannelRef.php');
 require_once(dirname(__FILE__).'/../src/GCPConfig.php');
 require_once(dirname(__FILE__).'/../src/GCPCallInvoker.php');
 require_once(dirname(__FILE__).'/../src/GCPExtensionChannel.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/ExtensionConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/AffinityConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/AffinityConfig_Command.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/ApiConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/ChannelPoolConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc_gcp/MethodConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/AffinityConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/AffinityConfig_Command.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/ApiConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/ChannelPoolConfig.php');
+require_once(dirname(__FILE__).'/generated/Grpc/Gcp/MethodConfig.php');
 require_once(dirname(__FILE__).'/generated/GPBMetadata/GrpcGcp.php');
 
 use Google\Cloud\Spanner\V1\SpannerGrpcClient;
 use Google\Cloud\Spanner\V1\CreateSessionRequest;
 use Google\Cloud\Spanner\V1\DeleteSessionRequest;
-
-use Symfony\Component\Cache\Adapter\FilesystemAdapter;
-use Symfony\Component\Cache\Adapter\ApcuAdapter;
-
 use Google\Auth\ApplicationDefaultCredentials;
 
 putenv("GOOGLE_APPLICATION_CREDENTIALS=./grpc-gcp.json");
-
-$string = file_get_contents("spanner.grpc.config");
-$conf = new Grpc_gcp\ExtensionConfig();
-$conf->mergeFromJsonString($string);
-
+$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
 $hostname = 'spanner.googleapis.com';
+$string = file_get_contents("spanner.grpc.config");
+
+
+$conf = new \Grpc\Gcp\ApiConfig();
+$conf->mergeFromJsonString($string);
+$config = new \Grpc\GCP\Config($hostname, $conf);
+
 $credentials = \Grpc\ChannelCredentials::createSsl();
 $auth = ApplicationDefaultCredentials::getCredentials();
 $opts = [
   'credentials' => $credentials,
   'update_metadata' => $auth->getUpdateMetadataFunc(),
+  'grpc_call_invoker' => $config->callInvoker(),
 ];
 
-$cacheItemPool = new FilesystemAdapter();
-$config = new \Grpc\GCP\Config($conf);
-$opts['grpc_call_invoker'] = $config->callInvoker();
-$stub = new SpannerGrpcClient($hostname, $opts, $config->channel());
-$gcp_channel = $config->channel();
+$stub = new SpannerGrpcClient($hostname, $opts);
+$call_invoker = $config->callInvoker();
 
 $database = 'projects/grpc-gcp/instances/sample/databases/benchmark';
 $table = 'storage';
@@ -60,8 +56,6 @@ function assertStatusOk($status) {
   }
 }
 
-$_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
-
 // Test CreateSession Reuse Channel
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   echo "===================================================\n";
@@ -74,10 +68,10 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   $delete_session_request->setName($session->getName());
   list($session, $status) = $stub->DeleteSession($delete_session_request)->wait();
   assertStatusOk($status);
-  $result = (count($gcp_channel->getChannelRefs()) == 1);
-  assertEqual(1, count($gcp_channel->getChannelRefs()));
+  $result = (count($call_invoker->_getChannel()->getChannelRefs()) == 1);
+  assertEqual(1, count($call_invoker->_getChannel()->getChannelRefs()));
 }
-//print_r($gcp_channel->getChannelRefs());
+//print_r($call_invoker->_getChannel()->getChannelRefs());
 
 
 // Test CreateSession New Channel
@@ -86,9 +80,9 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   $create_session_request = new CreateSessionRequest();
   $create_session_request->setDatabase($database);
   $create_session_call = $stub->CreateSession($create_session_request);
-  $result = (count($gcp_channel->getChannelRefs()) == $i+1);
-  print_r($gcp_channel->getChannelRefs());
-  assertEqual($i+1, count($gcp_channel->getChannelRefs()));
+  $result = (count($call_invoker->_getChannel()->getChannelRefs()) == $i+1);
+  print_r($call_invoker->_getChannel()->getChannelRefs());
+  assertEqual($i+1, count($call_invoker->_getChannel()->getChannelRefs()));
   array_push($rpc_calls, $create_session_call);
 }
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
@@ -99,9 +93,9 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
   $delete_session_call = $stub->DeleteSession($delete_session_request);
   list($session, $status) = $delete_session_call->wait();
   assertStatusOk($status);
-  $result = (count($gcp_channel->getChannelRefs()) == $_DEFAULT_MAX_CHANNELS_PER_TARGET);
+  $result = (count($call_invoker->_getChannel()->getChannelRefs()) == $_DEFAULT_MAX_CHANNELS_PER_TARGET);
   assertEqual($_DEFAULT_MAX_CHANNELS_PER_TARGET,
-      count($gcp_channel->getChannelRefs()));
+      count($call_invoker->_getChannel()->getChannelRefs()));
 }
 
 $rpc_calls = array();
@@ -110,9 +104,9 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++){
   $create_session_request = new CreateSessionRequest();
   $create_session_request->setDatabase($database);
   $create_session_call = $stub->CreateSession($create_session_request);
-  $result = (count($gcp_channel->getChannelRefs()) == $_DEFAULT_MAX_CHANNELS_PER_TARGET);
+  $result = (count($call_invoker->_getChannel()->getChannelRefs()) == $_DEFAULT_MAX_CHANNELS_PER_TARGET);
   assertEqual($_DEFAULT_MAX_CHANNELS_PER_TARGET,
-      count($gcp_channel->getChannelRefs()));
+      count($call_invoker->_getChannel()->getChannelRefs()));
   array_push($rpc_calls, $create_session_call);
 }
 for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
@@ -122,8 +116,7 @@ for ($i=0; $i<$_DEFAULT_MAX_CHANNELS_PER_TARGET; $i++) {
   list($session, $status) = $stub->DeleteSession($delete_session_request)->wait();
   assertStatusOk($status);
 }
-//print_r($gcp_channel->getChannelRefs());
-
+print_r($call_invoker->_getChannel()->getChannelRefs());
 
 // Test Bound_ Unbind with Invalid Affinity Key
 

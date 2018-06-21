@@ -32,39 +32,24 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
       $this->max_concurrent_streams_low_watermark =
           $opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark'];
     }
-//    print_r($opts['affinity_conf']);
     $this->target = $hostname;
     $this->affinity_by_method = $opts['affinity_conf']['affinity_by_method'];
     $this->affinity_key_to_channel_ref = array();
     $this->channel_refs = array();
     $this->affinity_conf = $opts['affinity_conf'];
+    $this->updateOpts($opts);
+  }
+
+  public function updateOpts($opts) {
+    $this->version += 1;
     $this->credentials = $opts['credentials'];
     unset($opts['affinity_conf']);
     unset($opts['credentials']);
-    unset($opts['update_metadata']);
-    $package_config = json_decode(
-      file_get_contents(dirname(__FILE__).'/../tests/composer.json'),
-      true
-    );
-    if (!empty($cur_opts['grpc.primary_user_agent'])) {
-      $opts['grpc.primary_user_agent'] .= ' ';
-    } else {
-      $opts['grpc.primary_user_agent'] = '';
-    }
-    $opts['grpc.primary_user_agent'] .=
-      'grpc-php/'.$package_config['version'];
     $this->options = $opts;
-  }
-
-  public function reCreateCredentials() {
-    $this->version += 1;
-    $credentials = \Grpc\ChannelCredentials::createSsl();
-    $this->credentials = $credentials;
   }
 
   public function _bind($channel_ref, $affinity_key)
   {
-    echo "bind!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!\n";
     if (!array_key_exists($affinity_key, $this->affinity_key_to_channel_ref)) {
       $this->affinity_key_to_channel_ref[$affinity_key] = $channel_ref;
     }
@@ -97,18 +82,28 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
 
     if(count($this->channel_refs) > 0 && $this->channel_refs[0]->getActiveStreamRef() <
       $this->max_concurrent_streams_low_watermark) {
-      echo "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx". $this->channel_refs[0]->getActiveStreamRef(). " ". $this->max_concurrent_streams_low_watermark. "\n";
       return $this->channel_refs[0];
     }
     $num_channel_refs = count($this->channel_refs);
     if ($num_channel_refs < $this->max_size) {
+      // grpc_target_persist_bound stands for how many channels can be persisted for
+      // the same target in the C extension. It is possible that the user use the pure
+      // gRPC and this GCP extension at the same time, which share the same target. In this case
+      // pure gRPC channel may occupy positions in C extension, which deletes some channels created
+      // by this GCP extension.
+      // If that happens, it won't cause the script failure because we saves all arguments for creating
+      // a channel instead of a channel itself. If we watch to fetch a GCP channel already deleted,
+      // it will create a new channel. The only cons is the latency of the first RPC will high because
+      // it will establish the connection again.
+      if (!isset($this->options['grpc_target_persist_bound']) ||
+          $this->options['grpc_target_persist_bound'] < $this->max_size) {
+        $this->options['grpc_target_persist_bound'] = $this->max_size;
+      }
       $cur_opts = array_merge($this->options,
-        ['grpc_gcp_channel_id' => $num_channel_refs,
-          'grpc_target_persist_bound' => $this->max_size]);
+        ['grpc_gcp_channel_id' => $num_channel_refs]);
       $channel_ref = new _ChannelRef($this->target, $num_channel_refs, $cur_opts);
       array_unshift($this->channel_refs, $channel_ref);
     }
-    echo "[getChannelRef] channel_refs ";
     return $this->channel_refs[0];
   }
 

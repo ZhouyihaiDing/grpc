@@ -14,16 +14,9 @@
 
 syntax = "proto3";
 
-package grpc_gcp;
-
-message ExtensionConfig {
-  repeated ApiConfig api = 1;
-}
+package grpc.gcp;
 
 message ApiConfig {
-  // A list of targets point to the same API endpoint.
-  repeated string target = 1;
-
   // The channel pool configurations.
   ChannelPoolConfig channel_pool = 2;
 
