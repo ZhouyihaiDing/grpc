@@ -1,18 +1,18 @@
 <?php
 header('Content-type: text/plain');
-putenv("GOOGLE_APPLICATION_CREDENTIALS=./grpc-gcp.json");
+putenv("GOOGLE_APPLICATION_CREDENTIALS=./../grpc-gcp.json");
 
-require_once(dirname(__FILE__).'/vendor/autoload.php');
-require_once(dirname(__FILE__).'/../src/ChannelRef.php');
-require_once(dirname(__FILE__).'/../src/GCPConfig.php');
-require_once(dirname(__FILE__).'/../src/GCPCallInvoker.php');
-require_once(dirname(__FILE__).'/../src/GCPExtensionChannel.php');
-require_once(dirname(__FILE__).'/generated/Grpc/Gcp/AffinityConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc/Gcp/AffinityConfig_Command.php');
-require_once(dirname(__FILE__).'/generated/Grpc/Gcp/ApiConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc/Gcp/ChannelPoolConfig.php');
-require_once(dirname(__FILE__).'/generated/Grpc/Gcp/MethodConfig.php');
-require_once(dirname(__FILE__).'/generated/GPBMetadata/GrpcGcp.php');
+require_once(dirname(__FILE__).'/../vendor/autoload.php');
+require_once(dirname(__FILE__).'/../../src/ChannelRef.php');
+require_once(dirname(__FILE__).'/../../src/GCPConfig.php');
+require_once(dirname(__FILE__).'/../../src/GCPCallInvoker.php');
+require_once(dirname(__FILE__).'/../../src/GCPExtensionChannel.php');
+require_once(dirname(__FILE__).'/../generated/Grpc/Gcp/AffinityConfig.php');
+require_once(dirname(__FILE__).'/../generated/Grpc/Gcp/AffinityConfig_Command.php');
+require_once(dirname(__FILE__).'/../generated/Grpc/Gcp/ApiConfig.php');
+require_once(dirname(__FILE__).'/../generated/Grpc/Gcp/ChannelPoolConfig.php');
+require_once(dirname(__FILE__).'/../generated/Grpc/Gcp/MethodConfig.php');
+require_once(dirname(__FILE__).'/../generated/GPBMetadata/GrpcGcp.php');
 
 use Google\Cloud\Spanner\V1\SpannerGrpcClient;
 use Google\Cloud\Spanner\V1\CreateSessionRequest;
@@ -25,7 +25,7 @@ $_DEFAULT_MAX_CHANNELS_PER_TARGET = 10;
 $_WATER_MARK = 2;
 
 $hostname = 'spanner.googleapis.com';
-$string = file_get_contents("spanner.grpc.config");
+$string = file_get_contents("../spanner.grpc.config");
 
 
 $conf = new \Grpc\Gcp\ApiConfig();
@@ -63,8 +63,20 @@ function assertStatusOk($status) {
 }
 
 assertEqual(2, count($call_invoker->_getChannel()->getChannelRefs()));
-assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[1]->getAffinityRef());
+assertEqual(1, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
+assertEqual(2, $call_invoker->_getChannel()->getChannelRefs()[1]->getAffinityRef());
 assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[1]->getActiveStreamRef());
+
+for ($i = 0; $i < $_WATER_MARK + 1; $i++) {
+  $sessions_name = $_SESSION['session' . $i];
+  $delete_session_request = new DeleteSessionRequest();
+  $delete_session_request->setName($sessions_name);
+  list($delete_session_response, $status) = $stub->DeleteSession($delete_session_request)->wait();
+}
+
+assertEqual(2, count($call_invoker->_getChannel()->getChannelRefs()));
 assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
 assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
-
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[1]->getAffinityRef());
+assertEqual(0, $call_invoker->_getChannel()->getChannelRefs()[1]->getActiveStreamRef());
