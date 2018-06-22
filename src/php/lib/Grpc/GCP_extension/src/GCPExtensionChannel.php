@@ -15,6 +15,7 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
   public $affinity_conf;
   // Version is used for debugging in PHP-FPM mode.
   public $version;
+  private $is_closed;
 
   public function getChannelRefs() {
     return $this->channel_refs;
@@ -46,6 +47,8 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
     unset($opts['affinity_conf']);
     unset($opts['credentials']);
     $this->options = $opts;
+
+    $this->is_closed = false;
   }
 
   public function _bind($channel_ref, $affinity_key)
@@ -108,23 +111,45 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
   }
 
   private function connectivityFunc($func, $args = null) {
+    // Since getRealChannel is creating a PHP Channel object. However in gRPC, when a Channel
+    // object is closed, we only mark this Object to be invalid. Thus, we need a global variable
+    // to mark whether this GCPExtensionChannel is close or not.
+    if ($this->is_closed) {
+      throw new \RuntimeException("Channel has already been closed");
+    }
     $ready = 0;
     $idle = 0;
     $connecting = 0;
     $transient_failure = 0;
     $shutdown = 0;
+    if(count($this->channel_refs) == 0) {
+      $this->getChannelRef();
+    }
     foreach ($this->channel_refs as $channel_ref) {
-      switch ($channel_ref->$func($args)) {
+      echo "has channel\n";
+      switch (
+      call_user_func_array(
+        array($channel_ref->getRealChannel($this->credentials), $func), $args)) {
         case \Grpc\CHANNEL_READY:
+          echo "CHANNEL_READY\n";
           $ready += 1;
-        case \Grpc\CHANNEL_SHUTDOWN:
+          break;
+        case \Grpc\CHANNEL_FATAL_FAILURE:
+          echo "CHANNEL_FATAL_FAILURE\n";
           $shutdown += 1;
+          continue;
         case \Grpc\CHANNEL_CONNECTING:
+          echo "CHANNEL_CONNECTING\n";
           $connecting += 1;
+          continue;
         case \Grpc\CHANNEL_TRANSIENT_FAILURE:
+          echo "CHANNEL_TRANSIENT_FAILURE\n";
           $transient_failure += 1;
+          continue;
         case \Grpc\CHANNEL_IDLE:
+          echo "CHANNEL_IDLE\n";
           $idle += 1;
+          continue;
       }
     }
     if ($ready > 0) {
@@ -141,11 +166,11 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
   }
 
   public function getConnectivityState($try_to_connect = false) {
-    return $this->connectivityFunc('getConnectivityState', $try_to_connect);
+    return $this->connectivityFunc('getConnectivityState', [$try_to_connect]);
   }
 
   public function watchConnectivityState($last_state, \Grpc\Timeval $deadline_obj) {
-    return $this->connectivityFunc('watchConnectivityState');
+    return $this->connectivityFunc('watchConnectivityState', [$last_state, $deadline_obj]);
   }
 
   public function getTarget() {
@@ -153,6 +178,9 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
   }
 
   public function close() {
-
+    foreach ($this->channel_refs as $channel_ref) {
+      $channel_ref->getRealChannel($this->credentials)->close();
+    }
+    $this->is_closed = true;
   }
 }

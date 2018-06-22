@@ -173,3 +173,40 @@ class GCPServerStreamCall extends GcpBaseCall
     return $status;
   }
 }
+
+
+class GCPClientStreamCall extends GcpBaseCall
+{
+  private $response = null;
+
+  private function createRealCall($channel) {
+    $this->real_call = new \Grpc\ClientStreamingCall($channel, $this->method, $this->deserialize, $this->options);
+    return $this->real_call;
+  }
+
+  public function start(array $metadata = []) {
+    $this->metadata = $metadata;
+  }
+
+  public function write($data, array $options = []) {
+
+  }
+
+  public function responses() {
+    $response = $this->real_call->responses();
+    // Since the last response is empty for the server streaming RPC,
+    // the second last one is the last RPC response with payload.
+    // Use this one for searching the affinity key.
+    // The same as BidiStreaming.
+    if ($response) {
+      $this->response = $response;
+    }
+    return $response;
+  }
+
+  public function getStatus() {
+    $status = $this->real_call->getStatus();
+    $this->_rpcPostProcess($status, $this->response);
+    return $status;
+  }
+}

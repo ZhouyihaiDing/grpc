@@ -9,7 +9,9 @@ class Config
 
   public function __construct($hostname, $conf)
   {
-    session_start();
+    if (session_status() == PHP_SESSION_NONE) {
+      session_start();
+    }
     // TODO(ddyihai): add session expire to free channel pool.
     // session_set_cookie_params(2);
     // session_cache_expire(1);
