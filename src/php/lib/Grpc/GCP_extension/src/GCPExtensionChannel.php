@@ -2,7 +2,8 @@
 
 namespace Grpc\GCP;
 
-class GrpcExtensionChannel implements \Grpc\ChannelInterface
+//class GrpcExtensionChannel implements \Grpc\ChannelInterface
+class GrpcExtensionChannel
 {
   public $max_size;
   public $max_concurrent_streams_low_watermark;
@@ -21,33 +22,45 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
     return $this->channel_refs;
   }
 
-  public function __construct($hostname, $opts = array())
+  public function __construct($hostname = null, $opts = array())
   {
+    if($hostname == null || !is_array($opts)) {
+      throw new \InvalidArgumentException("Expected hostname is empty");
+    }
     $this->version = 0;
     $this->max_size = 10;
     $this->max_concurrent_streams_low_watermark = 100;
-    if ($opts['affinity_conf']['channelPool']['maxSize']) {
-      $this->max_size = $opts['affinity_conf']['channelPool']['maxSize'];
-    }
-    if ($opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark']) {
-      $this->max_concurrent_streams_low_watermark =
-          $opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark'];
+    if (isset($opts['affinity_conf'])) {
+      if(isset($opts['affinity_conf']['channelPool'])) {
+        if ($opts['affinity_conf']['channelPool']['maxSize']) {
+          $this->max_size = $opts['affinity_conf']['channelPool']['maxSize'];
+        }
+        if ($opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark']) {
+          $this->max_concurrent_streams_low_watermark =
+            $opts['affinity_conf']['channelPool']['maxConcurrentStreamsLowWatermark'];
+        }
+      }
+      $this->affinity_by_method = $opts['affinity_conf']['affinity_by_method'];
+      $this->affinity_conf = $opts['affinity_conf'];
     }
     $this->target = $hostname;
-    $this->affinity_by_method = $opts['affinity_conf']['affinity_by_method'];
     $this->affinity_key_to_channel_ref = array();
     $this->channel_refs = array();
-    $this->affinity_conf = $opts['affinity_conf'];
     $this->updateOpts($opts);
+    // Initiate a Grpc\Channel at the beginning in order to keep the same
+    // behavior as the Grpc.
+    $channel_ref = $this->getChannelRef();
+    $channel_ref->getRealChannel($this->credentials);
   }
 
   public function updateOpts($opts) {
     $this->version += 1;
-    $this->credentials = $opts['credentials'];
+    if (isset($opts['credentials'])) {
+      $this->credentials = $opts['credentials'];
+    }
     unset($opts['affinity_conf']);
     unset($opts['credentials']);
     $this->options = $opts;
-
     $this->is_closed = false;
   }
 
@@ -110,7 +123,8 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
     return $this->channel_refs[0];
   }
 
-  private function connectivityFunc($func, $args = null) {
+
+  public function getConnectivityState($try_to_connect = false) {
     // Since getRealChannel is creating a PHP Channel object. However in gRPC, when a Channel
     // object is closed, we only mark this Object to be invalid. Thus, we need a global variable
     // to mark whether this GCPExtensionChannel is close or not.
@@ -122,14 +136,10 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
     $connecting = 0;
     $transient_failure = 0;
     $shutdown = 0;
-    if(count($this->channel_refs) == 0) {
-      $this->getChannelRef();
-    }
     foreach ($this->channel_refs as $channel_ref) {
-      echo "has channel\n";
-      switch (
-      call_user_func_array(
-        array($channel_ref->getRealChannel($this->credentials), $func), $args)) {
+      $state = $channel_ref->getRealChannel($this->credentials)->getConnectivityState($try_to_connect);
+      print_r($state);
+      switch ($state) {
         case \Grpc\CHANNEL_READY:
           echo "CHANNEL_READY\n";
           $ready += 1;
@@ -165,12 +175,21 @@ class GrpcExtensionChannel implements \Grpc\ChannelInterface
     }
   }
 
-  public function getConnectivityState($try_to_connect = false) {
-    return $this->connectivityFunc('getConnectivityState', [$try_to_connect]);
-  }
-
-  public function watchConnectivityState($last_state, \Grpc\Timeval $deadline_obj) {
-    return $this->connectivityFunc('watchConnectivityState', [$last_state, $deadline_obj]);
+  public function watchConnectivityState($last_state, $deadline_obj = null) {
+    if($deadline_obj == null || !is_a($deadline_obj, '\Grpc\Timeval')) {
+      throw new \InvalidArgumentException("");
+    }
+    // Since getRealChannel is creating a PHP Channel object. However in gRPC, when a Channel
+    // object is closed, we only mark this Object to be invalid. Thus, we need a global variable
+    // to mark whether this GCPExtensionChannel is close or not.
+    if ($this->is_closed) {
+      throw new \RuntimeException("Channel has already been closed");
+    }
+    $state = 0;
+    foreach ($this->channel_refs as $channel_ref) {
+      $state = $channel_ref->getRealChannel($this->credentials)->watchConnectivityState($last_state, $deadline_obj);
+    }
+    return $state;
   }
 
   public function getTarget() {

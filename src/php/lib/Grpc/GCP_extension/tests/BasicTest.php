@@ -339,6 +339,68 @@ class CallCredentialsTest extends PHPUnit_Framework_TestCase
       $this->assertEquals(0, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
       $this->assertEquals(0, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
     }
+  }
 
+  // Test More Than 100 Concurrent Stream
+  public function testHundredConcurrentStream()
+  {
+    $this->createStub(10, 100);
+    $sql_cmd = "select id from $this->table";
+    $result = ['payload'];
+    $exec_sql_calls = array();
+    $sessions = array();
+    $responses_result = array();
+    for ($i=0; $i < $this->_WATER_MARK; $i++) {
+      $create_session_request = new CreateSessionRequest();
+      $create_session_request->setDatabase($this->database);
+      $create_session_call = $this->stub->CreateSession($create_session_request);
+      list($session, $status) = $create_session_call->wait();
+      $this->assertStatusOk($status);
+      $this->assertEquals(1, count($this->call_invoker->_getChannel()->getChannelRefs()));
+      $this->assertEquals($i + 1, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+      $this->assertEquals($i, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
+
+      $exec_sql_request = new ExecuteSqlRequest();
+      $exec_sql_request->setSession($session->getName());
+      $exec_sql_request->setSql($sql_cmd);
+      $exec_sql_call = $this->stub->ExecuteStreamingSql($exec_sql_request);
+      $features = $exec_sql_call->responses();
+//      $features->current();
+      array_push($responses_result, $features);
+      array_push($exec_sql_calls, $exec_sql_call);
+      array_push($sessions, $session);
+      $this->assertEquals(1, count($this->call_invoker->_getChannel()->getChannelRefs()));
+      $this->assertEquals($i + 1, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+      $this->assertEquals($i + 1, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
+    }
+    print_r($this->call_invoker->_getChannel()->getChannelRefs());
+    $create_session_request = new CreateSessionRequest();
+    $create_session_request->setDatabase($this->database);
+    $create_session_call = $this->stub->CreateSession($create_session_request);
+    list($session, $status) = $create_session_call->wait();
+    $this->assertStatusOk($status);
+
+    $this->assertEquals(2, count($this->call_invoker->_getChannel()->getChannelRefs()));
+    $this->assertEquals(100, $this->call_invoker->_getChannel()->getChannelRefs()[1]->getAffinityRef());
+    $this->assertEquals(100, $this->call_invoker->_getChannel()->getChannelRefs()[1]->getActiveStreamRef());
+    $this->assertEquals(1, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getAffinityRef());
+    $this->assertEquals(0, $this->call_invoker->_getChannel()->getChannelRefs()[0]->getActiveStreamRef());
+
+    // The new request uses the new session id.
+    $exec_sql_request = new ExecuteSqlRequest();
+    $exec_sql_request->setSession($session->getName());
+    $exec_sql_request->setSql($sql_cmd);
+    $exec_sql_call = $this->stub->ExecuteStreamingSql($exec_sql_request);
+    $features = $exec_sql_call->responses();
+    array_push($exec_sql_calls, $exec_sql_call);
+    foreach ($features as $feature) {
+      $i = 0;
+      foreach ($feature->getValues() as $value) {
+        $this->assertEquals($value->getStringValue(), $result[$i]);
+        $i += 1;
+      }
+    }
+    $status = $exec_sql_call->getStatus();
+    $this->assertStatusOk($status);
   }
 }
