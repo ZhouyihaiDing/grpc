@@ -1,0 +1,6 @@
+tests/generated
+tests/vender
+tests/composer.lock
+tests/grpc-gcp.json
+tests/grpc_unit_test
+tests/SpannerTests.php
